@@ -1,0 +1,39 @@
+{
+  "name": "discord-bot-template",
+  "version": "1.0.0",
+  "description": "A basic Discord bot template using TypeScript and discord.js",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "dev": "ts-node src/index.ts"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "typescript",
+    "discord.js"
+  ],
+  "author": "238SAMIxD",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.9",
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.5",
+    "meklog": "^1.0.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.20.0",
+    "@jest/globals": "^29.7.0",
+    "@types/eslint__js": "^8.42.3",
+    "@types/node": "^20.11.24",
+    "eslint": "^9.20.1",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.3",
+    "globals": "^15.15.0",
+    "prettier": "^3.5.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.2",
+    "typescript-eslint": "^8.24.0"
+  }
+}
