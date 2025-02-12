@@ -1,20 +1,37 @@
 <div align="center">
-    <h1>Discord AI Bot</h1>
-    <h2>Repository is now in maintanance mode - rewriting project to Typescript on <a href="https://github.com/238SAMIxD/discord-ai-bot/tree/typescript">typescript</a> branch</h2>
-    <h3 align="center">Discord bot to interact with <a href="https://github.com/jmorganca/ollama">Ollama</a> and <a href="https://github.com/AUTOMATIC1111/stable-diffusion-webui">AUTOMATIC1111 Stable Diffusion</a> as a chatbot</h3>
-    <h3><img alt="Stars" src="https://img.shields.io/github/stars/mekb-turtle/discord-ai-bot?display_name=tag&style=for-the-badge" /></h3>
-    <h3><img alt="Discord chat with the bot" src="assets/screenshot.png" /></h3>
+   <h1>Discord AI Bot</h1>
+   <h2>Repository is now in maintanance mode - rewriting project to Typescript</h2>
+   <h3 align="center">Discord bot to interact with <a href="https://github.com/jmorganca/ollama">Ollama</a> and <a href="https://github.com/AUTOMATIC1111/stable-diffusion-webui">AUTOMATIC1111 Stable Diffusion</a> as a chatbot</h3>
+   <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/238samixd/discord-ai-bot?style=social">
 </div>
 
 The project started thanks to [mekb](https://github.com/mekb-turtle).
 
-### Set-up instructions
+## Roadmap
+
+- Rewrite old options to work with the new codebase
+- Add message history (storing, clearing)
+- Setup channels ids to allow the bot only in specific channels
+- Implement multiple servers support (copying commands?)
+- Check (and fix if necessary) `Dockerfile` and `docker-compose` setup
+- Review installation and usage instructions
+- Create docs with examples for the bot
+- Handle text attachments
+- Handle image attachments (only working with vision models)
+- Add slow mode option to prevent spam and GPU overload
+- Write unit tests
+- Create a RAG to extract information from _PDFs_ and/or docs
+- Implement [OpenWebUI](https://github.com/open-webui/open-webui) interactions (web search, youtube loader)
+- ? Implement [fabric](https://github.com/danielmiessler/fabric) integration (patterns, youtube video extraction if needed)
+- Fix streaming issues `/chat ... stream: True`
+
+### Set-up instructions (TO BE REVIEWED)
 
 1. Install [Node.js](https://nodejs.org) (if you have a package manager, use that instead to install this)
-   - Make sure to install at least v14 of Node.js
-2. Install [Ollama](https://github.com/jmorganca/ollama) (ditto)
-3. Pull (download) a model, e.g `ollama pull orca` or `ollama pull llama2`
-4. Start Ollama by running `ollama serve`
+   - Make sure to install at least v18 of Node.js (v20+ recommended)
+2. Install [Ollama](https://github.com/ollama/ollama)
+3. Pull (download) a model, `ollama pull MODEL` e.g `ollama pull llama3.1` - [Model list](https://ollama.com/search)
+4. Start Ollama by running `ollama serve` if not already running
 5. [Create a Discord bot](https://discord.com/developers/applications)
    - Under Application » Bot
      - Enable Message Content Intent
@@ -36,10 +53,10 @@ The project started thanks to [mekb](https://github.com/mekb-turtle).
 8. Install the required dependencies with `npm i`
 9. Start the bot with `npm start`
 10. You can interact with the bot by @mentioning it with your message
-11. Install <a href="https://github.com/AUTOMATIC1111/stable-diffusion-webui">Stable Diffusion</a>
+11. Install [Stable Diffusion](https://github.com/AUTOMATIC1111/stable-diffusion-webui)
 12. Run the script `./webui.sh --api --listen`
 
-### Set-up instructions with Docker
+### Set-up instructions with Docker (TO BE CHECKED)
 
 1. Install [Docker](https://docs.docker.com/get-docker/)
    - Should be atleast compatible with version 3 of compose (docker engine 1.13.0+)
