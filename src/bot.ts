@@ -6,6 +6,8 @@ import commands from "./commands/commands";
 
 dotenv.config();
 
+export const CHANNELS = process.env.CHANNELS ? process.env.CHANNELS.split(",") : [];
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -58,6 +60,18 @@ client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isCommand()) return;
 
   const { commandName } = interaction;
+
+  if (
+    CHANNELS.length > 0 &&
+    !CHANNELS.includes(interaction.channelId) &&
+    commandName !== "channels"
+  ) {
+    await interaction.reply({
+      content: "This command is not available in this channel.",
+      ephemeral: true,
+    });
+    return;
+  }
 
   commands.forEach(async command => {
     const name = (await command()).command.name;
