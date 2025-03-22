@@ -61,7 +61,6 @@ async function models() {
       const models: (OllamaModel | StableDiffusionModel)[] = response.models || response;
       const totalModels = models.length;
 
-      // Create multiple embeds if we have more than 25 models
       const embeds = [];
 
       for (let i = 0; i < Math.ceil(models.length / MAX_EMBED_FIELDS); i++) {

@@ -38,7 +38,7 @@ async function text2img(fetch = false) {
   if (tooManyModels && fetch) {
     log(
       LogLevel.Warning,
-      `Found ${models.length} Stable Diffusion models, which exceeds Discord's limit of 25 choices. Using text input instead.`
+      `Found ${models.length} Stable Diffusion models, which exceeds Discord's limit of ${MAX_COMMAND_CHOICES} choices. Using text input instead.`
     );
   }
 
