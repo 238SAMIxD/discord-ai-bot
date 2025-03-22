@@ -99,8 +99,13 @@ async function models() {
           embeds: [embeds[0]],
         });
 
+        let lastMessage = await interaction.fetchReply();
         for (let i = 1; i < embeds.length; i++) {
-          await interaction.followUp({ embeds: [embeds[i]] });
+          if (i === 1) {
+            lastMessage = await interaction.followUp({ embeds: [embeds[i]] });
+          } else {
+            lastMessage = await lastMessage.reply({ embeds: [embeds[i]] });
+          }
         }
       }
     } catch (error) {

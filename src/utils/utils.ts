@@ -83,7 +83,10 @@ export async function replySplitMessage(
   }));
 
   const replyMessages: (OmitPartialGroupDMChannel<Message<boolean>> | Message)[] = [];
-  for (let i = 0; i < responseMessages.length; ++i) {
+  if (defer) {
+    await interaction.editReply(responseMessages[0].content);
+  }
+  for (let i = defer ? 1 : 0; i < responseMessages.length; ++i) {
     replyMessages.push(
       replyMessages.length === 0
         ? await interaction.followUp(responseMessages[i])
