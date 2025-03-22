@@ -7,13 +7,14 @@ import {
 import { LogLevel } from "meklog";
 
 import { log } from "../bot";
-import { MAX_MESSAGE_LENGTH, MESSAGE_CHUNK_SIZE } from "../utils/consts";
-import { getModels, makeRequest, METHOD } from "../utils/service";
-import { replySplitMessage } from "../utils/utils";
+import { MAX_COMMAND_CHOICES, MAX_MESSAGE_LENGTH, MESSAGE_CHUNK_SIZE } from "../utils/consts";
+import { getModelInfo, getModels, makeRequest, METHOD } from "../utils/service";
+import { parseEnvString, replySplitMessage } from "../utils/utils";
 
 export type ChatOptions = {
   model: string;
   prompt: string;
+  system?: string;
   stream?: boolean;
 };
 
@@ -31,29 +32,52 @@ const SERVER = process.env.OLLAMA;
 
 async function chat(fetch = false) {
   const models = (fetch && SERVER && ((await getModels(SERVER, "/api/tags"))?.models || [])) || [];
+  const tooManyModels = models.length > MAX_COMMAND_CHOICES;
+
+  if (tooManyModels && fetch) {
+    log(
+      LogLevel.Warning,
+      `Found ${models.length} models, which exceeds Discord's limit of ${MAX_COMMAND_CHOICES} choices. Using text input instead.`
+    );
+  }
+
+  const command = new SlashCommandBuilder()
+    .setName("chat")
+    .setDescription("Chat with Ollama")
+    .addStringOption(option =>
+      option.setName("prompt").setDescription("Prompt to chat with Ollama").setRequired(true)
+    );
+
+  // If too many models, use a regular string input instead of choices
+  if (tooManyModels) {
+    command.addStringOption(option =>
+      option
+        .setName("model")
+        .setDescription("Model to use (use /models ollama to see available models)")
+        .setRequired(true)
+    );
+  } else {
+    command.addStringOption(option =>
+      option
+        .setName("model")
+        .setDescription("Model to use")
+        .setRequired(true)
+        .addChoices(
+          models.map((model: Model) => ({
+            name: model.name,
+            value: model.model,
+          }))
+        )
+    );
+  }
+
+  // Add the stream option
+  command.addBooleanOption(option =>
+    option.setName("stream").setDescription("(Experimental) Stream response").setRequired(false)
+  );
 
   return {
-    command: new SlashCommandBuilder()
-      .setName("chat")
-      .setDescription("Chat with Ollama")
-      .addStringOption(option =>
-        option.setName("prompt").setDescription("Prompt to chat with Ollama").setRequired(true)
-      )
-      .addStringOption(option =>
-        option
-          .setName("model")
-          .setDescription("Model to use")
-          .setRequired(true)
-          .addChoices(
-            models.map((model: Model) => ({
-              name: model.name,
-              value: model.model,
-            }))
-          )
-      )
-      .addBooleanOption(option =>
-        option.setName("stream").setDescription("(Experimental) Stream response").setRequired(false)
-      ),
+    command,
     handler: handleChat,
   };
 
@@ -64,13 +88,41 @@ async function chat(fetch = false) {
     const model = options.get("model")!.value as string;
     const stream = (options.get("stream")?.value as boolean) ?? false;
 
+    // Check if system prompt should be used
+    const useSystemMessage = process.env.USE_SYSTEM !== "false";
+    const useModelSystemMessage = process.env.USE_MODEL_SYSTEM === "true";
+    const systemPrompts = [];
+
+    // Only use model system prompt if USE_MODEL_SYSTEM is true
+    if (useModelSystemMessage) {
+      const modelInfo = await getModelInfo(SERVER!, "/api/show", model);
+      if (modelInfo && modelInfo.system) {
+        systemPrompts.push(parseEnvString(modelInfo.system));
+      }
+    }
+
+    // Only use system prompt if USE_SYSTEM is true
+    if (useSystemMessage) {
+      systemPrompts.push(parseEnvString(process.env.SYSTEM_PROMPT || ""));
+    }
+
     await interaction.deferReply();
     try {
+      const requestData: ChatOptions = {
+        prompt,
+        model,
+        stream,
+      };
+
+      if (systemPrompts.length > 0) {
+        requestData.system = systemPrompts.join("\n");
+      }
+
       const response: OllamaResponse = await makeRequest(
         SERVER!,
         "/api/generate",
         METHOD.POST,
-        { prompt, model, stream },
+        requestData,
         stream
       );
 
@@ -101,11 +153,11 @@ async function chat(fetch = false) {
 
         while (queue.length > 0) {
           const chunk = queue.shift()!;
-          const text = decoder.decode(chunk, { stream: true });
           try {
-            const data = JSON.parse(text);
-            chunkBuffer += data.response;
-            message += data.response;
+            const data = JSON.parse(decoder.decode(chunk, { stream: true }));
+            const text = data.response;
+            chunkBuffer += text;
+            message += text;
             if (chunkBuffer.length >= MESSAGE_CHUNK_SIZE || isEnd) {
               if (message.length > MAX_MESSAGE_LENGTH - MESSAGE_CHUNK_SIZE) {
                 messages.push(

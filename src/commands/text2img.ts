@@ -2,7 +2,7 @@ import { CommandInteraction, SlashCommandBuilder } from "discord.js";
 import { LogLevel } from "meklog";
 
 import { log } from "../bot";
-import { MAX_FILES_LENGTH } from "../utils/consts";
+import { MAX_COMMAND_CHOICES, MAX_FILES_LENGTH } from "../utils/consts";
 import { getModels, makeRequest, METHOD } from "../utils/service";
 
 export type Text2ImgOptions = {
@@ -33,69 +33,93 @@ const SERVER = process.env.STABLE_DIFFUSION;
 async function text2img(fetch = false) {
   const models =
     (fetch && SERVER && ((await getModels(SERVER, "/sdapi/v1/sd-models")) || [])) || [];
+  const tooManyModels = models.length > MAX_COMMAND_CHOICES;
+
+  if (tooManyModels && fetch) {
+    log(
+      LogLevel.Warning,
+      `Found ${models.length} Stable Diffusion models, which exceeds Discord's limit of 25 choices. Using text input instead.`
+    );
+  }
+
+  const command = new SlashCommandBuilder()
+    .setName("text2img")
+    .setDescription("Convert text to image")
+    .addStringOption(option =>
+      option.setName("prompt").setDescription("Text to convert").setRequired(true)
+    );
+
+  // If too many models, use a regular string input instead of choices
+  if (tooManyModels) {
+    command.addStringOption(option =>
+      option
+        .setName("model")
+        .setDescription("Model to use (use /models stable_diffusion to see available models)")
+        .setRequired(false)
+    );
+  } else {
+    command.addStringOption(option =>
+      option
+        .setName("model")
+        .setDescription("Model to use")
+        .setRequired(false)
+        .addChoices(
+          models.map((model: Model) => ({
+            name: `${model.model_name}`,
+            value: model.model_name,
+          }))
+        )
+    );
+  }
+
+  // Add the remaining options
+  command
+    .addNumberOption(option =>
+      option
+        .setName("width")
+        .setDescription("Width of the image")
+        .setRequired(false)
+        .setMinValue(128)
+        .setMaxValue(1024)
+    )
+    .addNumberOption(option =>
+      option
+        .setName("height")
+        .setDescription("Height of the image")
+        .setRequired(false)
+        .setMinValue(128)
+        .setMaxValue(1024)
+    )
+    .addNumberOption(option =>
+      option
+        .setName("steps")
+        .setDescription("Number of steps")
+        .setRequired(false)
+        .setMinValue(5)
+        .setMaxValue(20)
+    )
+    .addNumberOption(option =>
+      option
+        .setName("iterations")
+        .setDescription("Iterations")
+        .setRequired(false)
+        .setMinValue(1)
+        .setMaxValue(5)
+    )
+    .addNumberOption(option =>
+      option
+        .setName("batch_size")
+        .setDescription("Batch size")
+        .setRequired(false)
+        .setMinValue(1)
+        .setMaxValue(5)
+    )
+    .addBooleanOption(option =>
+      option.setName("enhance_prompt").setDescription("Enhance prompt").setRequired(false)
+    );
 
   return {
-    command: new SlashCommandBuilder()
-      .setName("text2img")
-      .setDescription("Convert text to image")
-      .addStringOption(option =>
-        option.setName("prompt").setDescription("Text to convert").setRequired(true)
-      )
-      .addStringOption(option =>
-        option
-          .setName("model")
-          .setDescription("Model to use")
-          .setRequired(false)
-          .addChoices(
-            models.map((model: Model) => ({
-              name: `${model.model_name}`,
-              value: model.model_name,
-            }))
-          )
-      )
-      .addNumberOption(option =>
-        option
-          .setName("width")
-          .setDescription("Width of the image")
-          .setRequired(false)
-          .setMinValue(128)
-          .setMaxValue(1024)
-      )
-      .addNumberOption(option =>
-        option
-          .setName("height")
-          .setDescription("Height of the image")
-          .setRequired(false)
-          .setMinValue(128)
-          .setMaxValue(1024)
-      )
-      .addNumberOption(option =>
-        option
-          .setName("steps")
-          .setDescription("Number of steps")
-          .setRequired(false)
-          .setMinValue(5)
-          .setMaxValue(20)
-      )
-      .addNumberOption(option =>
-        option
-          .setName("iterations")
-          .setDescription("Iterations")
-          .setRequired(false)
-          .setMinValue(1)
-          .setMaxValue(5)
-      )
-      .addNumberOption(option =>
-        option
-          .setName("batch_size")
-          .setDescription("Batch size")
-          .setRequired(false)
-          .setMinValue(1)
-          .setMaxValue(5)
-      )
-      .addBooleanOption(option =>
-        option.setName("enhance_prompt").setDescription("Enhance prompt").setRequired(false)
-      ),
+    command,
     handler: handleText2Img,
   };
 }
@@ -104,12 +128,12 @@ async function handleText2Img(interaction: CommandInteraction) {
   const { options } = interaction;
 
   const prompt = options.get("prompt")!.value as string;
-  const width = (options.get("width")?.value as number) || 256;
-  const height = (options.get("height")?.value as number) || 256;
-  const steps = (options.get("steps")?.value as number) || 10;
-  const iterations = (options.get("iterations")?.value as number) || 1;
-  const batchSize = (options.get("batch_size")?.value as number) || 1;
-  const enhancePrompt = (options.get("enhance_prompt")?.value as boolean) || false;
+  const width = (options.get("width")?.value as number) ?? 256;
+  const height = (options.get("height")?.value as number) ?? 256;
+  const steps = (options.get("steps")?.value as number) ?? 10;
+  const iterations = (options.get("iterations")?.value as number) ?? 1;
+  const batchSize = (options.get("batch_size")?.value as number) ?? 1;
+  const enhancePrompt = (options.get("enhance_prompt")?.value as boolean) ?? false;
   const model = options.get("model")?.value as string;
 
   await interaction.deferReply();

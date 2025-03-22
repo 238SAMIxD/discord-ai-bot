@@ -50,3 +50,16 @@ export async function getModels(server: string, endpoint: string) {
     return null;
   }
 }
+
+export async function getModelInfo(server: string, endpoint: string, model: string) {
+  const url = new URL(endpoint, server);
+  try {
+    log(LogLevel.Debug, `Getting model info from ${url} for model ${model}`);
+
+    const response = await axios.post(url.toString(), { name: model });
+    return response.data;
+  } catch (error) {
+    log(LogLevel.Error, `Failed to get model info from ${url} - ${error}`);
+    return null;
+  }
+}
