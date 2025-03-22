@@ -58,7 +58,7 @@ async function models() {
         return;
       }
 
-      const models = response.models as (OllamaModel | StableDiffusionModel)[];
+      const models: (OllamaModel | StableDiffusionModel)[] = response.models || response;
       const totalModels = models.length;
 
       // Create multiple embeds if we have more than 25 models
