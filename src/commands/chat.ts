@@ -187,9 +187,9 @@ async function chat(fetch = false) {
         if (processing) return;
         processing = true;
 
+        let chunkBuffer = "";
         while (queue.length > 0) {
           const chunk = queue.shift()!;
-          let chunkBuffer = "";
 
           try {
             const data = JSON.parse(decoder.decode(chunk, { stream: true }));
