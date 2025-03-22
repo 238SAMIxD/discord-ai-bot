@@ -9,8 +9,7 @@ The project started thanks to [mekb](https://github.com/mekb-turtle).
 
 ## Roadmap
 
-- Rewrite old options to work with the new codebase
-- Add message history (storing, clearing)
+- Add `/generate` command to generate a single response with no history
 - Setup channels ids to allow the bot only in specific channels
 - Implement multiple servers support (copying commands?)
 - Check (and fix if necessary) `Dockerfile` and `docker-compose` setup
