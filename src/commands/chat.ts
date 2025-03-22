@@ -161,7 +161,6 @@ async function chat(fetch = false) {
       }
 
       const decoder = new TextDecoder();
-      let chunkBuffer = "";
       let message = "";
       const queue: Buffer[] = [];
       let processing = false;
@@ -190,6 +189,8 @@ async function chat(fetch = false) {
 
         while (queue.length > 0) {
           const chunk = queue.shift()!;
+          let chunkBuffer = "";
+
           try {
             const data = JSON.parse(decoder.decode(chunk, { stream: true }));
             const text = data.message?.content || "";
