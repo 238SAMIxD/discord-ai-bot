@@ -1,10 +1,4 @@
-import {
-  CommandInteraction,
-  InteractionResponse,
-  Message,
-  OmitPartialGroupDMChannel,
-  TextChannel,
-} from "discord.js";
+import { CommandInteraction, Message, OmitPartialGroupDMChannel } from "discord.js";
 
 export function splitText(str: string, length: number) {
   str = str
@@ -71,6 +65,11 @@ export function parseEnvString(str: string) {
   return typeof str === "string"
     ? parseJSONMessage(str).replace(/<date>/gi, new Date().toUTCString())
     : null;
+}
+
+export function parseEnvNumber(str: string) {
+  const num = parseFloat(str);
+  return !isNaN(num) ? num : null;
 }
 
 export async function replySplitMessage(
