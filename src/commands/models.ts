@@ -96,7 +96,7 @@ async function models() {
       } else {
         // Send first embed as a reply
         await interaction.editReply({
-          content: `Found ${totalModels} Ollama models. Showing results in ${embeds.length} pages:`,
+          content: `Found ${totalModels} ${providerName} models. Showing results in ${embeds.length} pages:`,
           embeds: [embeds[0]],
         });
 
