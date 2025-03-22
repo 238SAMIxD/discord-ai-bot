@@ -49,7 +49,6 @@ async function text2img(fetch = false) {
       option.setName("prompt").setDescription("Text to convert").setRequired(true)
     );
 
-  // If too many models, use a regular string input instead of choices
   if (tooManyModels) {
     command.addStringOption(option =>
       option
@@ -72,7 +71,6 @@ async function text2img(fetch = false) {
     );
   }
 
-  // Add the remaining options
   command
     .addNumberOption(option =>
       option

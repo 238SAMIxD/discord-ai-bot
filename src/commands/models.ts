@@ -94,13 +94,11 @@ async function models() {
       if (embeds.length === 1) {
         await interaction.editReply({ embeds: embeds });
       } else {
-        // Send first embed as a reply
         await interaction.editReply({
           content: `Found ${totalModels} ${providerName} models. Showing results in ${embeds.length} pages:`,
           embeds: [embeds[0]],
         });
 
-        // Send remaining embeds as follow-ups
         for (let i = 1; i < embeds.length; i++) {
           await interaction.followUp({ embeds: [embeds[i]] });
         }

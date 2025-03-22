@@ -8,6 +8,9 @@ dotenv.config();
 
 export const CHANNELS = process.env.CHANNELS ? process.env.CHANNELS.split(",") : [];
 
+const production = process.env.NODE_ENV === "prod" || process.env.NODE_ENV === "production";
+export let log = Logger({ production, prefix: "Bot" });
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -29,7 +32,6 @@ if (!process.env.DISCORD_TOKEN) {
 }
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
-export let log: Logger;
 process.on("message", (data: ProcessMessageData) => {
   if (data.shardID && client.shard) {
     Object.defineProperty(client.shard, "ids", { value: [data.shardID] });

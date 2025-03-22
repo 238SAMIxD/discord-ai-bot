@@ -10,7 +10,7 @@ if (!process.env.DISCORD_TOKEN) {
 }
 
 const production = process.env.NODE_ENV === "prod" || process.env.NODE_ENV === "production";
-const log = Logger(production, "Shard Manager");
+const log = Logger({ production, prefix: "Shard Manager" });
 
 log(LogLevel.Info, "Loading");
 
@@ -21,7 +21,7 @@ const manager = new ShardingManager(filePath, {
 });
 
 manager.on("shardCreate", async shard => {
-  const shardLog = Logger(production, `Shard #${shard.id}`);
+  const shardLog = Logger({ production, prefix: `Shard #${shard.id}` });
 
   shardLog(LogLevel.Info, "Created shard");
 

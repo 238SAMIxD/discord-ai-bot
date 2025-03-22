@@ -1,8 +1,12 @@
-import { CommandInteraction, TextChannel } from "discord.js";
+import {
+  CommandInteraction,
+  InteractionResponse,
+  Message,
+  OmitPartialGroupDMChannel,
+  TextChannel,
+} from "discord.js";
 
-// split text so it fits in a Discord message
 export function splitText(str: string, length: number) {
-  // trim matches different characters to \s
   str = str
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
@@ -17,15 +21,12 @@ export function splitText(str: string, length: number) {
       segment = "";
     }
   }
-  // match a word
   while ((word = str.match(/^[^\s]*(?:\s+|$)/)) != null) {
     suffix = "";
     word = word[0];
     if (word.length == 0) break;
     if (segment.length + word.length > length) {
-      // prioritise splitting by newlines over other whitespaces
       if (segment.includes("\n")) {
-        // append up all but last paragraph
         const beforeParagraph = segment.match(/^.*\n/s);
         if (beforeParagraph != null) {
           const lastParagraph = segment.substring(beforeParagraph[0].length, segment.length);
@@ -36,11 +37,9 @@ export function splitText(str: string, length: number) {
         }
       }
       appendSegment();
-      // if word is larger than the split length
       if (word.length > length) {
         word = word.substring(0, length);
         if (length > 1 && word.match(/^[^\s]+$/)) {
-          // try to hyphenate word
           word = word.substring(0, word.length - 1);
           suffix = "-";
         }
@@ -83,19 +82,13 @@ export async function replySplitMessage(
     content: text,
   }));
 
-  const replyMessages = [];
+  const replyMessages: (OmitPartialGroupDMChannel<Message<boolean>> | Message)[] = [];
   for (let i = 0; i < responseMessages.length; ++i) {
-    if (i == 0) {
-      replyMessages.push(
-        defer
-          ? await interaction.editReply(responseMessages[i])
-          : await interaction.reply(responseMessages[i])
-      );
-    } else {
-      if (interaction.channel?.isTextBased()) {
-        replyMessages.push(await (interaction.channel as TextChannel).send(responseMessages[i]));
-      }
-    }
+    replyMessages.push(
+      replyMessages.length === 0
+        ? await interaction.followUp(responseMessages[i])
+        : await replyMessages[replyMessages.length - 1].reply(responseMessages[i].content)
+    );
   }
   return replyMessages;
 }

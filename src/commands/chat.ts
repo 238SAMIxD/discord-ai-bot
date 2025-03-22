@@ -8,10 +8,10 @@ import { LogLevel } from "meklog";
 
 import { log } from "../bot";
 import { MAX_COMMAND_CHOICES, MAX_MESSAGE_LENGTH, MESSAGE_CHUNK_SIZE } from "../utils/consts";
+import { HistoryMessage, historyService } from "../utils/historyService";
 import { getModelInfo, getModels, makeRequest, METHOD } from "../utils/service";
 import { parseEnvString, replySplitMessage } from "../utils/utils";
 
-// Define message structure for chat API
 interface OllamaMessage {
   role: "user" | "assistant" | "system";
   content: string;
@@ -57,7 +57,6 @@ async function chat(fetch = false) {
       option.setName("prompt").setDescription("Prompt to chat with Ollama").setRequired(true)
     );
 
-  // If too many models, use a regular string input instead of choices
   if (tooManyModels) {
     command.addStringOption(option =>
       option
@@ -80,7 +79,6 @@ async function chat(fetch = false) {
     );
   }
 
-  // Add the stream option
   command.addBooleanOption(option =>
     option.setName("stream").setDescription("(Experimental) Stream response").setRequired(false)
   );
@@ -92,20 +90,22 @@ async function chat(fetch = false) {
 
   async function handleChat(interaction: CommandInteraction) {
     const { options } = interaction;
+    const userId = interaction.user.id;
 
     const prompt = options.get("prompt")!.value as string;
     const model = options.get("model")!.value as string;
     const stream = (options.get("stream")?.value as boolean) ?? false;
 
-    // Initialize messages array with user prompt
-    const messages: OllamaMessage[] = [{ role: "user", content: prompt }];
-
-    // Check if system prompt should be used
     const useSystemMessage = process.env.USE_SYSTEM !== "false";
     const useModelSystemMessage = process.env.USE_MODEL_SYSTEM === "true";
     const systemPrompts = [];
 
-    // Only use model system prompt if USE_MODEL_SYSTEM is true
+    const userMessage: HistoryMessage = { role: "user", content: prompt };
+    const userHistory = historyService.getUserHistory(userId);
+    const messages: OllamaMessage[] = [...userHistory, userMessage];
+
+    historyService.addMessage(userId, userMessage);
+
     if (useModelSystemMessage) {
       const modelInfo = await getModelInfo(SERVER!, "/api/show", model);
       if (modelInfo && modelInfo.system) {
@@ -113,12 +113,18 @@ async function chat(fetch = false) {
       }
     }
 
-    // Only use system prompt if USE_SYSTEM is true
     if (useSystemMessage) {
       systemPrompts.push(parseEnvString(process.env.SYSTEM_PROMPT || ""));
     }
 
-    messages.unshift({ role: "system", content: systemPrompts.join("\n") });
+    if (systemPrompts.length > 0) {
+      const systemMessage: OllamaMessage = {
+        role: "system",
+        content: systemPrompts.join("\n"),
+      };
+
+      messages.unshift(systemMessage);
+    }
 
     await interaction.deferReply();
     try {
@@ -128,13 +134,28 @@ async function chat(fetch = false) {
         stream,
       };
 
-      log(LogLevel.Debug, `Sending chat request with ${messages.length} messages`);
+      log(
+        LogLevel.Debug,
+        `Sending chat request with ${messages.length} messages for user ${userId}`
+      );
 
-      const response = await makeRequest(SERVER!, "/api/chat", METHOD.POST, requestData, stream);
+      const response: OllamaChatResponse = await makeRequest(
+        SERVER!,
+        "/api/chat",
+        METHOD.POST,
+        requestData,
+        stream
+      );
 
       if (!stream) {
-        // For non-streaming responses, get content from message
         const responseContent = response.message?.content || "";
+
+        const assistantMessage: HistoryMessage = {
+          role: "assistant",
+          content: responseContent,
+        };
+        historyService.addMessage(userId, assistantMessage);
+
         await replySplitMessage(interaction, responseContent, true);
         return;
       }
@@ -152,7 +173,15 @@ async function chat(fetch = false) {
       });
 
       response.on("end", async () => {
-        await processQueue(true); // it still misses last several chunks
+        await processQueue(true); // It may miss the last chunks
+
+        if (message) {
+          const assistantMessage: HistoryMessage = {
+            role: "assistant",
+            content: message,
+          };
+          historyService.addMessage(userId, assistantMessage);
+        }
       });
 
       async function processQueue(isEnd = false) {
@@ -163,7 +192,6 @@ async function chat(fetch = false) {
           const chunk = queue.shift()!;
           try {
             const data = JSON.parse(decoder.decode(chunk, { stream: true }));
-            // Chat API uses message.content instead of response
             const text = data.message?.content || "";
 
             if (text) {
@@ -213,4 +241,5 @@ async function chat(fetch = false) {
     }
   }
 }
+
 export default chat;
