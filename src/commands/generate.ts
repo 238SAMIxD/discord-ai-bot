@@ -138,9 +138,9 @@ async function generate(fetch = false) {
     if (textAttachments.length > 0) {
       try {
         await Promise.all(
-          textAttachments.map(async (att, i) => {
-            const response = await downloadAttachment(att.url);
-            userInput += `\n${i + 1}. File - ${att.name}:\n${response.data}`;
+          textAttachments.map(async (attachment, i) => {
+            const response = await downloadAttachment(attachment.url);
+            userInput += `\n${i + 1}. File - ${attachment.name}:\n${response.data}`;
           })
         );
       } catch (error) {
@@ -156,9 +156,8 @@ async function generate(fetch = false) {
     if (imageAttachments.length > 0) {
       try {
         await Promise.all(
-          imageAttachments.map(async (att, i) => {
-            const response = await downloadAttachment(att.url, true);
-
+          imageAttachments.map(async attachment => {
+            const response = await downloadAttachment(attachment.url, true);
             images.push(Buffer.from(response.data, "binary").toString("base64"));
           })
         );
