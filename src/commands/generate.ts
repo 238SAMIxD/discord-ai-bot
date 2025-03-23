@@ -106,8 +106,14 @@ async function generate(fetch = false) {
         attachments.push(attachment);
       }
     }
-    const textAttachments = attachments.filter(attachment =>
-      attachment.contentType?.startsWith("text")
+    console.log(attachments);
+    const textAttachments = attachments.filter(
+      attachment =>
+        attachment.contentType?.startsWith("text") ||
+        attachment.contentType?.includes("json") ||
+        attachment.contentType?.includes("xml") ||
+        attachment.contentType?.includes("sh") ||
+        attachment.contentType?.includes("php")
     );
 
     const useSystemMessage = process.env.USE_SYSTEM !== "false";
