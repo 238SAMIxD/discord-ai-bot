@@ -9,7 +9,6 @@ The project started thanks to [mekb](https://github.com/mekb-turtle).
 
 ## Roadmap
 
-- Handle pdf attachments
 - Implement multiple servers support (copying commands?)
 - Check (and fix if necessary) `Dockerfile` and `docker-compose` setup
 - Review installation and usage instructions

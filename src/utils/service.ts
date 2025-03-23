@@ -1,5 +1,6 @@
 import axios, { Method } from "axios";
 import { LogLevel } from "meklog";
+import pdfParse from "pdf-parse";
 
 import { log } from "../bot";
 import { ChatOptions } from "../commands/chat";
@@ -64,8 +65,21 @@ export async function getModelInfo(server: string, endpoint: string, model: stri
   }
 }
 
-export function downloadAttachment(url: string, buffer?: boolean) {
+export function downloadAttachment(
+  url: string,
+  responseType: "json" | "text" | "arraybuffer" = "json"
+) {
   return axios.get(url, {
-    responseType: buffer ? "arraybuffer" : "json",
+    responseType,
   });
+}
+
+export async function extractTextFromPDF(pdfBuffer: Buffer): Promise<string> {
+  try {
+    const data = await pdfParse(pdfBuffer);
+    return data.text || "No text content could be extracted from this PDF.";
+  } catch (error) {
+    log(LogLevel.Error, `Failed to extract text from PDF: ${error}`);
+    throw new Error("Failed to extract text from PDF");
+  }
 }
