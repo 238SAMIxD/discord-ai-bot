@@ -146,7 +146,7 @@ async function generate(fetch = false) {
       systemPrompts.push(parseEnvString(process.env.SYSTEM || ""));
     }
 
-    const texts: string[] = [];
+    const textContents: string[] = [];
     if (textAttachments.length > 0) {
       try {
         await Promise.all(
@@ -155,14 +155,14 @@ async function generate(fetch = false) {
             let content = response.data;
 
             if (content.length > 8000) {
-              content = content.substring(0, 8000) + "\n\n[File truncated due to size]";
               log(
                 LogLevel.Warning,
                 `Text file attachment truncated from ${response.data.length} characters`
               );
+              content = content.substring(0, 8000) + "\n\n[File truncated due to size]";
             }
 
-            texts.push(`\n\n📄 Text File - ${attachment.name}:\n${content}`);
+            textContents.push(`\n\n📄 Text File - ${attachment.name}:\n${content}`);
           })
         );
       } catch (error) {
@@ -174,7 +174,7 @@ async function generate(fetch = false) {
       }
     }
 
-    const pdfs: string[] = [];
+    const pdfTexts: string[] = [];
     if (pdfAttachments.length > 0) {
       try {
         await Promise.all(
@@ -184,11 +184,11 @@ async function generate(fetch = false) {
             let pdfText = await extractTextFromPDF(pdfBuffer);
 
             if (pdfText.length > 8000) {
-              pdfText = pdfText.substring(0, 8000) + "\n\n[PDF content truncated due to size]";
               log(LogLevel.Warning, `PDF content truncated from ${pdfText.length} characters`);
+              pdfText = pdfText.substring(0, 8000) + "\n\n[PDF content truncated due to size]";
             }
 
-            pdfs.push(`\n\n📑 PDF Document - ${attachment.name}:\n${pdfText}`);
+            pdfTexts.push(`\n\n📑 PDF Document - ${attachment.name}:\n${pdfText}`);
             log(LogLevel.Info, `Successfully extracted text from PDF ${attachment.name}`);
           })
         );
@@ -201,13 +201,13 @@ async function generate(fetch = false) {
       }
     }
 
-    const images: string[] = [];
+    const imagesBase64: string[] = [];
     if (imageAttachments.length > 0) {
       try {
         await Promise.all(
           imageAttachments.map(async attachment => {
             const response = await downloadAttachment(attachment.url, "arraybuffer");
-            images.push(Buffer.from(response.data).toString("base64"));
+            imagesBase64.push(Buffer.from(response.data).toString("base64"));
           })
         );
       } catch (error) {
@@ -222,7 +222,7 @@ async function generate(fetch = false) {
     try {
       const requestData: GenerateOptions = {
         model,
-        prompt: prompt + texts.join("") + pdfs.join(""),
+        prompt: prompt + textContents.join("") + pdfTexts.join(""),
         stream,
       };
 
@@ -230,8 +230,8 @@ async function generate(fetch = false) {
         requestData.system = systemPrompts.join("\n");
       }
 
-      if (images.length > 0) {
-        requestData.images = images;
+      if (imagesBase64.length > 0) {
+        requestData.images = imagesBase64;
       }
 
       log(
