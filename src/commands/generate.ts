@@ -1,4 +1,5 @@
 import {
+  Attachment,
   CommandInteraction,
   Message,
   OmitPartialGroupDMChannel,
@@ -8,8 +9,8 @@ import { LogLevel } from "meklog";
 
 import { log } from "../bot";
 import { MAX_COMMAND_CHOICES, MAX_MESSAGE_LENGTH, MESSAGE_CHUNK_SIZE } from "../utils/consts";
-import { getModelInfo, getModels, makeRequest, METHOD } from "../utils/service";
-import { parseEnvString, replySplitMessage } from "../utils/utils";
+import { downloadAttachment, getModelInfo, getModels, makeRequest, METHOD } from "../utils/service";
+import { parseEnvNumber, parseEnvString, replySplitMessage } from "../utils/utils";
 
 export type GenerateOptions = {
   model: string;
@@ -29,6 +30,7 @@ interface Model {
 }
 
 const SERVER = process.env.OLLAMA;
+const MAX_ATTACHMENTS = parseEnvNumber(process.env.MAX_ATTACHMENTS ?? "1");
 
 async function generate(fetch = false) {
   const models = (fetch && SERVER && ((await getModels(SERVER, "/api/tags"))?.models || [])) || [];
@@ -70,6 +72,15 @@ async function generate(fetch = false) {
     );
   }
 
+  for (let i = 1; i <= MAX_ATTACHMENTS!; i++) {
+    command.addAttachmentOption(option =>
+      option
+        .setName(`attachment${i}`)
+        .setDescription(`Attach text file number ${i}`)
+        .setRequired(false)
+    );
+  }
+
   command.addBooleanOption(option =>
     option.setName("stream").setDescription("(Experimental) Stream response").setRequired(false)
   );
@@ -80,12 +91,24 @@ async function generate(fetch = false) {
   };
 
   async function handleGenerate(interaction: CommandInteraction) {
+    await interaction.deferReply();
+
     const { options } = interaction;
     const userId = interaction.user.id;
 
     const prompt = options.get("prompt")!.value as string;
     const model = options.get("model")!.value as string;
     const stream = (options.get("stream")?.value as boolean) ?? false;
+    const attachments: Attachment[] = [];
+    for (let i = 1; i <= MAX_ATTACHMENTS!; i++) {
+      const attachment = options.get(`attachment${i}`)?.attachment;
+      if (attachment) {
+        attachments.push(attachment);
+      }
+    }
+    const textAttachments = attachments.filter(attachment =>
+      attachment.contentType?.startsWith("text")
+    );
 
     const useSystemMessage = process.env.USE_SYSTEM !== "false";
     const useModelSystemMessage = process.env.USE_MODEL_SYSTEM === "true";
@@ -102,11 +125,26 @@ async function generate(fetch = false) {
       systemPrompts.push(parseEnvString(process.env.SYSTEM || ""));
     }
 
-    await interaction.deferReply();
+    let userInput = prompt;
+    if (textAttachments.length > 0) {
+      try {
+        await Promise.all(
+          textAttachments.map(async (att, i) => {
+            const response = await downloadAttachment(att.url);
+            userInput += `\n${i + 1}. File - ${att.name}:\n${response.data}`;
+          })
+        );
+      } catch (error) {
+        log(LogLevel.Error, `Failed to download text files: ${error}`);
+        await interaction.editReply({ content: "Failed to parse attachments" });
+        return;
+      }
+    }
+
     try {
       const requestData: GenerateOptions = {
         model,
-        prompt,
+        prompt: userInput,
         stream,
       };
 
@@ -125,12 +163,10 @@ async function generate(fetch = false) {
       );
 
       if (!stream) {
-        // For non-streaming responses
         await replySplitMessage(interaction, response.response, true);
         return;
       }
 
-      // For streaming responses
       const decoder = new TextDecoder();
       let message = "";
       const queue: Buffer[] = [];
@@ -156,7 +192,6 @@ async function generate(fetch = false) {
 
           try {
             const data = JSON.parse(decoder.decode(chunk, { stream: true }));
-            // Generate API uses response field
             const text = data.response || "";
 
             if (text) {

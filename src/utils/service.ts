@@ -63,3 +63,7 @@ export async function getModelInfo(server: string, endpoint: string, model: stri
     return null;
   }
 }
+
+export function downloadAttachment(url: string) {
+  return axios.get(url);
+}
