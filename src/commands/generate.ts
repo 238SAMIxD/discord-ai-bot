@@ -17,6 +17,7 @@ export type GenerateOptions = {
   prompt: string;
   system?: string;
   stream?: boolean;
+  images?: string[];
 };
 
 interface OllamaResponse {
@@ -114,6 +115,9 @@ async function generate(fetch = false) {
         attachment.contentType?.includes("sh") ||
         attachment.contentType?.includes("php")
     );
+    const imageAttachments = attachments.filter(attachment =>
+      attachment.contentType?.startsWith("image")
+    );
 
     const useSystemMessage = process.env.USE_SYSTEM !== "false";
     const useModelSystemMessage = process.env.USE_MODEL_SYSTEM === "true";
@@ -148,11 +152,31 @@ async function generate(fetch = false) {
       }
     }
 
+    const images: string[] = [];
+    if (imageAttachments.length > 0) {
+      try {
+        await Promise.all(
+          imageAttachments.map(async (att, i) => {
+            const response = await downloadAttachment(att.url, true);
+
+            images.push(Buffer.from(response.data, "binary").toString("base64"));
+          })
+        );
+      } catch (error) {
+        log(LogLevel.Error, `Failed to download image files: ${error}`);
+        await interaction.editReply({
+          content: `Failed to download attachments. Error: ${error instanceof Error ? error.message : String(error)}`,
+        });
+        return;
+      }
+    }
+
     try {
       const requestData: GenerateOptions = {
         model,
         prompt: userInput,
         stream,
+        images,
       };
 
       if (systemPrompts.length > 0) {

@@ -64,6 +64,8 @@ export async function getModelInfo(server: string, endpoint: string, model: stri
   }
 }
 
-export function downloadAttachment(url: string) {
-  return axios.get(url);
+export function downloadAttachment(url: string, buffer?: boolean) {
+  return axios.get(url, {
+    responseType: buffer ? "arraybuffer" : "json",
+  });
 }
