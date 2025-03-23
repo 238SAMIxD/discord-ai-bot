@@ -131,66 +131,6 @@ async function generate(fetch = false) {
       attachment.contentType?.startsWith("image")
     );
 
-    let userInput = prompt;
-
-    if (textAttachments.length > 0) {
-      try {
-        await Promise.all(
-          textAttachments.map(async (attachment, i) => {
-            const response = await downloadAttachment(attachment.url, "text");
-            let content = response.data;
-
-            if (content.length > 8000) {
-              content = content.substring(0, 8000) + "\n\n[File truncated due to size]";
-              log(
-                LogLevel.Warning,
-                `Text file attachment truncated from ${response.data.length} characters`
-              );
-            }
-
-            userInput += `\n\n📄 Text File - ${attachment.name}:\n${content}`;
-          })
-        );
-      } catch (error) {
-        log(LogLevel.Error, `Failed to process text files: ${error}`);
-        await interaction.editReply({
-          content: `Failed to process text attachments. Error: ${error instanceof Error ? error.message : String(error)}`,
-        });
-        return;
-      }
-    }
-
-    if (pdfAttachments.length > 0) {
-      try {
-        await Promise.all(
-          pdfAttachments.map(async attachment => {
-            try {
-              const response = await downloadAttachment(attachment.url, "arraybuffer");
-              const pdfBuffer = Buffer.from(response.data);
-              let pdfText = await extractTextFromPDF(pdfBuffer);
-
-              if (pdfText.length > 8000) {
-                pdfText = pdfText.substring(0, 8000) + "\n\n[PDF content truncated due to size]";
-                log(LogLevel.Warning, `PDF content truncated from ${pdfText.length} characters`);
-              }
-
-              userInput += `\n\n📑 PDF Document - ${attachment.name}:\n${pdfText}`;
-              log(LogLevel.Info, `Successfully extracted text from PDF ${attachment.name}`);
-            } catch (pdfError) {
-              log(LogLevel.Error, `Failed to process PDF ${attachment.name}: ${pdfError}`);
-              userInput += `\n\n📑 PDF Document - ${attachment.name}: [Error: Could not extract text from this PDF]`;
-            }
-          })
-        );
-      } catch (error) {
-        log(LogLevel.Error, `Failed to process PDF files: ${error}`);
-        await interaction.editReply({
-          content: `Failed to process PDF attachments. Error: ${error instanceof Error ? error.message : String(error)}`,
-        });
-        return;
-      }
-    }
-
     const useSystemMessage = process.env.USE_SYSTEM !== "false";
     const useModelSystemMessage = process.env.USE_MODEL_SYSTEM === "true";
     const systemPrompts = [];
@@ -206,28 +146,83 @@ async function generate(fetch = false) {
       systemPrompts.push(parseEnvString(process.env.SYSTEM || ""));
     }
 
-    try {
-      const images: string[] = [];
-      if (imageAttachments.length > 0) {
-        try {
-          await Promise.all(
-            imageAttachments.map(async attachment => {
-              const response = await downloadAttachment(attachment.url, "arraybuffer");
-              images.push(Buffer.from(response.data).toString("base64"));
-            })
-          );
-        } catch (error) {
-          log(LogLevel.Error, `Failed to download image files: ${error}`);
-          await interaction.editReply({
-            content: `Failed to download image attachments. Error: ${error instanceof Error ? error.message : String(error)}`,
-          });
-          return;
-        }
-      }
+    const texts: string[] = [];
+    if (textAttachments.length > 0) {
+      try {
+        await Promise.all(
+          textAttachments.map(async attachment => {
+            const response = await downloadAttachment(attachment.url, "text");
+            let content = response.data;
 
+            if (content.length > 8000) {
+              content = content.substring(0, 8000) + "\n\n[File truncated due to size]";
+              log(
+                LogLevel.Warning,
+                `Text file attachment truncated from ${response.data.length} characters`
+              );
+            }
+
+            texts.push(`\n\n📄 Text File - ${attachment.name}:\n${content}`);
+          })
+        );
+      } catch (error) {
+        log(LogLevel.Error, `Failed to process text files: ${error}`);
+        await interaction.editReply({
+          content: `Failed to process text attachments. Error: ${error instanceof Error ? error.message : String(error)}`,
+        });
+        return;
+      }
+    }
+
+    const pdfs: string[] = [];
+    if (pdfAttachments.length > 0) {
+      try {
+        await Promise.all(
+          pdfAttachments.map(async attachment => {
+            const response = await downloadAttachment(attachment.url, "arraybuffer");
+            const pdfBuffer = Buffer.from(response.data);
+            let pdfText = await extractTextFromPDF(pdfBuffer);
+
+            if (pdfText.length > 8000) {
+              pdfText = pdfText.substring(0, 8000) + "\n\n[PDF content truncated due to size]";
+              log(LogLevel.Warning, `PDF content truncated from ${pdfText.length} characters`);
+            }
+
+            pdfs.push(`\n\n📑 PDF Document - ${attachment.name}:\n${pdfText}`);
+            log(LogLevel.Info, `Successfully extracted text from PDF ${attachment.name}`);
+          })
+        );
+      } catch (error) {
+        log(LogLevel.Error, `Failed to process PDF files: ${error}`);
+        await interaction.editReply({
+          content: `Failed to process PDF attachments. Error: ${error instanceof Error ? error.message : String(error)}`,
+        });
+        return;
+      }
+    }
+
+    const images: string[] = [];
+    if (imageAttachments.length > 0) {
+      try {
+        await Promise.all(
+          imageAttachments.map(async attachment => {
+            const response = await downloadAttachment(attachment.url, "arraybuffer");
+            images.push(Buffer.from(response.data).toString("base64"));
+          })
+        );
+      } catch (error) {
+        log(LogLevel.Error, `Failed to download image files: ${error}`);
+        await interaction.editReply({
+          content: `Failed to download image attachments. Error: ${error instanceof Error ? error.message : String(error)}`,
+        });
+        return;
+      }
+    }
+
+    try {
       const requestData: GenerateOptions = {
         model,
-        prompt: userInput,
+        prompt: prompt + texts.join("") + pdfs.join(""),
         stream,
       };
 
