@@ -72,7 +72,7 @@ async function generate(fetch = false) {
     );
   }
 
-  for (let i = 1; i <= MAX_ATTACHMENTS!; i++) {
+  for (let i = 1; i <= MAX_ATTACHMENTS; i++) {
     command.addAttachmentOption(option =>
       option
         .setName(`attachment${i}`)
@@ -100,7 +100,7 @@ async function generate(fetch = false) {
     const model = options.get("model")!.value as string;
     const stream = (options.get("stream")?.value as boolean) ?? false;
     const attachments: Attachment[] = [];
-    for (let i = 1; i <= MAX_ATTACHMENTS!; i++) {
+    for (let i = 1; i <= MAX_ATTACHMENTS; i++) {
       const attachment = options.get(`attachment${i}`)?.attachment;
       if (attachment) {
         attachments.push(attachment);
@@ -141,7 +141,9 @@ async function generate(fetch = false) {
         );
       } catch (error) {
         log(LogLevel.Error, `Failed to download text files: ${error}`);
-        await interaction.editReply({ content: "Failed to parse attachments" });
+        await interaction.editReply({
+          content: `Failed to parse attachments. Error: ${error instanceof Error ? error.message : String(error)}`,
+        });
         return;
       }
     }
