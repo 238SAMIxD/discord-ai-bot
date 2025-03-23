@@ -1,4 +1,4 @@
-import axios, { Method } from "axios";
+import axios, { Method, ResponseType } from "axios";
 import { LogLevel } from "meklog";
 import pdfParse from "pdf-parse";
 
@@ -65,10 +65,7 @@ export async function getModelInfo(server: string, endpoint: string, model: stri
   }
 }
 
-export function downloadAttachment(
-  url: string,
-  responseType: "json" | "text" | "arraybuffer" = "json"
-) {
+export function downloadAttachment(url: string, responseType: ResponseType = "json") {
   return axios.get(url, {
     responseType,
   });
