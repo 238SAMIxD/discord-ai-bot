@@ -142,7 +142,7 @@ async function generate(fetch = false) {
       } catch (error) {
         log(LogLevel.Error, `Failed to download text files: ${error}`);
         await interaction.editReply({
-          content: `Failed to parse attachments. Error: ${error instanceof Error ? error.message : String(error)}`,
+          content: `Failed to download attachments. Error: ${error instanceof Error ? error.message : String(error)}`,
         });
         return;
       }
