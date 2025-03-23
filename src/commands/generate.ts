@@ -30,7 +30,7 @@ interface Model {
 }
 
 const SERVER = process.env.OLLAMA;
-const MAX_ATTACHMENTS = parseEnvNumber(process.env.MAX_ATTACHMENTS ?? "1");
+const MAX_ATTACHMENTS = parseEnvNumber(process.env.MAX_ATTACHMENTS ?? "1") ?? 1;
 
 async function generate(fetch = false) {
   const models = (fetch && SERVER && ((await getModels(SERVER, "/api/tags"))?.models || [])) || [];
@@ -106,7 +106,6 @@ async function generate(fetch = false) {
         attachments.push(attachment);
       }
     }
-    console.log(attachments);
     const textAttachments = attachments.filter(
       attachment =>
         attachment.contentType?.startsWith("text") ||
