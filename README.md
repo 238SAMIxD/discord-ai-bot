@@ -13,8 +13,6 @@ The project started thanks to [mekb](https://github.com/mekb-turtle).
 - Check (and fix if necessary) `Dockerfile` and `docker-compose` setup
 - Review installation and usage instructions
 - Create docs with examples for the bot
-- Handle text attachments
-- Handle image attachments (only working with vision models)
 - Add slow mode option to prevent spam and GPU overload
 - Write unit tests
 - Create a RAG to extract information from _PDFs_ and/or docs
