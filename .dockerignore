@@ -1,5 +1,35 @@
+# Package management files
 package-lock.json
 pnpm-lock.yaml
 pnpm-lock.yml
+yarn.lock
+
+# Node modules
 node_modules/
+
+# Environment files
 .env
+.env.*
+
+# Git files
+.git
+.gitignore
+
+# IDE files
+.vscode/
+.idea/
+
+# Build output
+dist/
+
+# Logs
+logs/
+*.log
+
+# Test files
+__tests__/
+*.test.ts
+*.spec.ts
+
+# Misc
+.DS_Store

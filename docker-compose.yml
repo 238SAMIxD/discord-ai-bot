@@ -1,9 +1,25 @@
 version: "3"
 
 services:
-    bot:
-        build: .
-        env_file: .env
-        environment:
-            - OLLAMA=http://host.docker.internal:11434
-        restart: unless-stopped
+  bot:
+    build: .
+    env_file: .env
+    environment:
+      - OLLAMA=http://host.docker.internal:11434
+      - STABLE_DIFFUSION=http://host.docker.internal:7860
+      - NODE_ENV=production
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - ai-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('Health check')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  ai-network:
+    driver: bridge
