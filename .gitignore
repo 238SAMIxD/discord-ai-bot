@@ -1,6 +1,41 @@
-package-lock.json
-pnpm-lock.yaml
-pnpm-lock.yml
+# Dependencies
 node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Environment variables
 .env
-.vscode/
+.env.*
+!.env.example
+
+# Build files
+dist/
+build/
+
+# Log files
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# OS specific files
+Thumbs.db
+Desktop.ini
