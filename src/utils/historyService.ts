@@ -17,11 +17,6 @@ class HistoryService {
 
   constructor() {
     this.historyMap = new Map<string, HistoryMessage[]>();
-    try {
-      log(LogLevel.Info, "History service initialized");
-    } catch (error) {
-      console.log("[Info] History service initialized");
-    }
   }
 
   public getUserHistory(userId: string): HistoryMessage[] {
@@ -44,11 +39,7 @@ class HistoryService {
 
   public clearHistory(userId: string): void {
     this.historyMap.set(userId, []);
-    try {
-      log(LogLevel.Info, `Cleared history for user ${userId}`);
-    } catch (error) {
-      console.log(`[Info] Cleared history for user ${userId}`);
-    }
+    log(LogLevel.Info, `Cleared history for user ${userId}`);
   }
 
   public hasHistory(userId: string): boolean {

@@ -8,9 +8,10 @@
     "build": "tsc",
     "dev": "ts-node src/index.ts",
     "test": "npm run test:lint && npm run test:prettier && npm run test:jest",
-    "test:jest": "jest",
     "test:lint": "eslint src",
     "test:prettier": "prettier --check src",
+    "test:jest": "jest",
+    "jest:watch": "jest --watch",
     "lint": "eslint src --fix",
     "prettier": "prettier --write src"
   },
