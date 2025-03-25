@@ -3,10 +3,10 @@ FROM node:20-slim
 WORKDIR /app
 
 # Copy package files first for better layer caching
-COPY package*.json ./
+COPY package.json package-lock.json ./
 
 # Install dependencies
-RUN npm ci --omit=dev --no-package-lock
+RUN npm ci --omit=dev
 
 # Copy all project files
 COPY . .
