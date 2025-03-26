@@ -1,3 +1,43 @@
+.PHONY: all setup build lint test clean run docker-build docker-run
+
+# Default target
+all: setup build lint test
+
+# Install dependencies
+setup:
+	npm ci
+
+# Build the project
+build:
+	npm run build
+
+# Lint and format checking
+lint:
+	npm run test:lint
+	npm run test:prettier
+
+# Run tests
+test:
+	npm run test:tsc
+	npm run test:jest
+
+# Clean build artifacts
+clean:
+	rm -rf dist
+	rm -rf coverage
+
+# Run the bot
+run: build
+	npm start
+
+# Build Docker image
+docker-build:
+	docker build -t discord-ai-bot .
+
+# Run Docker container
+docker-run: docker-build
+	docker run -it --rm --env-file .env discord-ai-bot
+
 # As long as you have Make running on your machine you should be able to use this file.
 # make <command-name> runs a given command (e.g. make compose-up)
 # Command-names are given by starting a line without a tab and followed by a colon (i.e.':').
