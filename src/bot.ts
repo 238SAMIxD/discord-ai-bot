@@ -1,6 +1,6 @@
 import { Client, GatewayIntentBits, Partials } from "discord.js";
-import { setLogger } from "./utils/logger.js";
-import { Logger } from "./types.js";
+import { log, setLogger } from "./utils/logger.js";
+import { Logger, LogLevel } from "./types.js";
 import type { ShardMessage } from "./types.js";
 import { config } from "./config.js";
 import { registerEvents } from "./events/index.js";
@@ -26,4 +26,7 @@ process.on("message", (data: ShardMessage) => {
 
 registerEvents(client);
 
-client.login(config.token);
+void client.login(config.token).catch((error) => {
+	log.log(LogLevel.Error, "Failed to login to Discord", error);
+	process.exit(1);
+});

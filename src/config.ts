@@ -6,12 +6,33 @@ dotenv.config();
 
 const customSystemMessage = parseEnvString(process.env.SYSTEM);
 const initialPrompt = parseEnvString(process.env.INITIAL_PROMPT);
+const token = process.env.TOKEN;
+
+if (!token) {
+	throw new Error("TOKEN environment variable is required");
+}
+
+function parseServerUrl(url: string, envName: string): URL {
+	try {
+		return new URL(url);
+	} catch {
+		throw new Error(`Invalid URL in ${envName}: ${url}`);
+	}
+}
+
+function parseServers(value: string | undefined, envName: string): Server[] {
+	return (value ?? "")
+		.split(",")
+		.map(url => url.trim())
+		.filter(url => url.length > 0)
+		.map((url): Server => ({ url: parseServerUrl(url, envName), available: true }));
+}
 
 export const config = {
-	token: process.env.TOKEN,
+	token,
 	model: process.env.MODEL ?? "orca",
-	servers: (process.env.OLLAMA ?? "").split(",").filter(url => url.length > 0).map((url): Server => ({ url: new URL(url), available: true })),
-	stableDiffusionServers: (process.env.STABLE_DIFFUSION ?? "").split(",").filter(url => url.length > 0).map((url): Server => ({ url: new URL(url), available: true })),
+	servers: parseServers(process.env.OLLAMA, "OLLAMA"),
+	stableDiffusionServers: parseServers(process.env.STABLE_DIFFUSION, "STABLE_DIFFUSION"),
 	channels: (process.env.CHANNELS ?? "").split(",").filter(c => c.length > 0),
 	customSystemMessage,
 	useCustomSystemMessage: getBoolean(process.env.USE_SYSTEM) && !!customSystemMessage,

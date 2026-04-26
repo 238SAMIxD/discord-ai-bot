@@ -15,6 +15,7 @@ const event: Event<Events.InteractionCreate> = {
 		switch (commandName) {
 			case "text2img":
 				try {
+					await interaction.deferReply();
 					const prompt = options.getString("prompt", true);
 					const width = options.getInteger("width") ?? 256;
 					const height = options.getInteger("height") ?? 256;
@@ -23,7 +24,6 @@ const event: Event<Events.InteractionCreate> = {
 					const batch_size = options.getInteger("batch_size") ?? 1;
 					const enhance_prompt = options.getBoolean("enhance_prompt") ? "yes" : "no";
 
-					await interaction.deferReply();
 					const stableDiffusionResponse = await makeStableDiffusionRequest<StableDiffusionResponse>(
 						"/sdapi/v1/txt2img",
 						"post",
@@ -38,7 +38,7 @@ const event: Event<Events.InteractionCreate> = {
 							enhance_prompt
 						}
 					);
-					const images = stableDiffusionResponse.images.map((image) =>
+					const images = (stableDiffusionResponse.images ?? []).map((image) =>
 						Buffer.from(image, "base64")
 					);
 					await interaction.editReply({
@@ -47,9 +47,16 @@ const event: Event<Events.InteractionCreate> = {
 					});
 				} catch (error) {
 					logError(error);
-					await interaction.editReply({
-						content: "Error, please check the console"
-					});
+					if (interaction.deferred || interaction.replied) {
+						await interaction.editReply({
+							content: "Error, please check the console"
+						});
+					} else {
+						await interaction.reply({
+							content: "Error, please check the console",
+							ephemeral: true
+						});
+					}
 				}
 				break;
 		}

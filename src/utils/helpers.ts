@@ -59,7 +59,9 @@ export function splitText(str: string, length: number): string[] {
 }
 
 export function getBoolean(str: string | undefined): boolean {
-	return !!str && str != "false" && str != "no" && str != "off" && str != "0";
+	if (!str) return false;
+	const normalized = str.trim().toLowerCase();
+	return normalized !== "" && normalized != "false" && normalized != "no" && normalized != "off" && normalized != "0";
 }
 
 export function parseJSONMessage(str: string): string {

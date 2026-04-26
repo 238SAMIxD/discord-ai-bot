@@ -4,6 +4,8 @@ import { LogLevel } from "../types.js";
 import { shuffleArray } from "../utils/helpers.js";
 import type { Server } from "../types.js";
 
+const SERVER_WAIT_TIMEOUT_MS = 60_000;
+
 export async function makeBaseRequest<T = unknown>(
 	servers: Server[],
 	randomServer: boolean,
@@ -16,8 +18,15 @@ export async function makeBaseRequest<T = unknown>(
 		throw new Error("No servers available");
 	}
 
-	while (servers.filter(server => server.available).length == 0) {
-		await new Promise(res => setTimeout(res, 1000));
+	if (servers.every(server => !server.available)) {
+		log.log(LogLevel.Debug, "All servers are busy, waiting for an available server.");
+		const waitStart = Date.now();
+		while (servers.every(server => !server.available)) {
+			if (Date.now() - waitStart > SERVER_WAIT_TIMEOUT_MS) {
+				throw new Error("All servers busy: timed out waiting for an available server");
+			}
+			await new Promise(res => setTimeout(res, 1000));
+		}
 	}
 
 	let error: Error | null = null;

@@ -65,7 +65,7 @@ const event: Event<Events.MessageCreate> = {
 			const systemMessage: string = systemMessages.join("\n\n");
 
 			let userInput: string = message.content
-				.replace(new RegExp("^s*" + myMention.source, ""), "").trim();
+				.replace(new RegExp("^\\s*" + myMention.source), "").trim();
 
 			if (userInput.startsWith(".")) {
 				const args = userInput.substring(1).split(/\s+/g);
@@ -152,12 +152,13 @@ const event: Event<Events.MessageCreate> = {
 				const textAttachments = Array.from(message.attachments, ([, value]) => value).filter(att => att.contentType?.startsWith("text"));
 				if (textAttachments.length > 0) {
 					try {
-						await Promise.all(textAttachments.map(async (att, i) => {
+						const attachmentContents = await Promise.all(textAttachments.map(async (att, i) => {
 							const response = await axios.get<string>(att.url);
-							userInput += `\n${i + 1}. File - ${att.name}:\n${response.data}`;
+							return `\n${i + 1}. File - ${att.name}:\n${response.data}`;
 						}));
+						userInput += attachmentContents.join("");
 					} catch (error) {
-						log.log(LogLevel.Error, `Failed to download text files: ${error}`);
+						logError(error);
 						await message.reply({ content: "Failed to download text files" });
 						return;
 					}
@@ -236,13 +237,17 @@ const event: Event<Events.MessageCreate> = {
 
 			const replyMessageIDs: string[] = (await replySplitMessage(message, `${prefix}${responseText}`)).map(msg => msg.id);
 
-			const doneChunk = response.filter(e => e.done && e.context)[0];
-			const newContext: number[] = doneChunk.context!;
-			for (let i = 0; i < replyMessageIDs.length; ++i) {
-				messages[channelID][replyMessageIDs[i]] = newContext;
+			const doneChunk = response.find(e => e.done && e.context);
+			if (doneChunk?.context) {
+				const newContext = doneChunk.context;
+				for (const id of replyMessageIDs) {
+					messages[channelID][id] = newContext;
+				}
+				messages[channelID].last = newContext;
+				++messages[channelID].amount;
+			} else {
+				log.log(LogLevel.Error, "Ollama response missing final context; conversation state not updated");
 			}
-			messages[channelID].last = newContext;
-			++messages[channelID].amount;
 		} catch (error) {
 			if (typing) {
 				try {

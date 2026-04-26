@@ -1,6 +1,5 @@
 <div align="center">
     <h1>Discord AI Bot</h1>
-    <h2>Repository is now in maintanance mode - rewriting project to Typescript on <a href="https://github.com/238SAMIxD/discord-ai-bot/tree/typescript">typescript</a> branch</h2>
     <h3 align="center">Discord bot to interact with <a href="https://github.com/jmorganca/ollama">Ollama</a> and <a href="https://github.com/AUTOMATIC1111/stable-diffusion-webui">AUTOMATIC1111 Stable Diffusion</a> as a chatbot</h3>
     <h3><img alt="Stars" src="https://img.shields.io/github/stars/238SAMIxD/discord-ai-bot?display_name=tag&style=for-the-badge" /></h3>
 </div>
@@ -8,7 +7,7 @@
 ### Set-up instructions
 
 1. Install [Node.js](https://nodejs.org) (if you have a package manager, use that instead to install this)
-   - Make sure to install at least v14 of Node.js
+   - Make sure to install at least v20 of Node.js
 2. Install [Ollama](https://github.com/jmorganca/ollama) (ditto)
 3. Pull (download) a model, e.g `ollama pull orca` or `ollama pull llama2`
 4. Start Ollama by running `ollama serve`
