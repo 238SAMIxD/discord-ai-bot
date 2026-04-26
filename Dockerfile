@@ -1,7 +1,10 @@
 FROM node:20
 
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 COPY . .
-RUN npm i --omit=dev --no-package-lock
+RUN pnpm i
+RUN pnpm run build
 USER node
 
-CMD ["node","./src/index.js"]
+CMD ["node","./dist/index.js"]

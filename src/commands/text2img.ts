@@ -6,7 +6,7 @@ const text2img = new SlashCommandBuilder()
 	.addStringOption((option) =>
 		option.setName("prompt").setDescription("Text to convert").setRequired(true)
 	)
-	.addNumberOption((option) =>
+	.addIntegerOption((option) =>
 		option
 			.setName("width")
 			.setDescription("Width of the image")
@@ -14,7 +14,7 @@ const text2img = new SlashCommandBuilder()
 			.setMinValue(128)
 			.setMaxValue(1024)
 	)
-	.addNumberOption((option) =>
+	.addIntegerOption((option) =>
 		option
 			.setName("height")
 			.setDescription("Height of the image")
@@ -22,7 +22,7 @@ const text2img = new SlashCommandBuilder()
 			.setMinValue(128)
 			.setMaxValue(1024)
 	)
-	.addNumberOption((option) =>
+	.addIntegerOption((option) =>
 		option
 			.setName("steps")
 			.setDescription("Number of steps")
@@ -30,7 +30,7 @@ const text2img = new SlashCommandBuilder()
 			.setMinValue(5)
 			.setMaxValue(20)
 	)
-	.addNumberOption((option) =>
+	.addIntegerOption((option) =>
 		option
 			.setName("batch_count")
 			.setDescription("Batch count")
@@ -38,7 +38,7 @@ const text2img = new SlashCommandBuilder()
 			.setMinValue(1)
 			.setMaxValue(4)
 	)
-	.addNumberOption((option) =>
+	.addIntegerOption((option) =>
 		option
 			.setName("batch_size")
 			.setDescription("Batch size")
