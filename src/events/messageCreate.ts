@@ -4,7 +4,7 @@ import { config } from "../config.js";
 import { log, logError } from "../utils/logger.js";
 import { LogLevel } from "../types.js";
 import { makeRequest } from "../api/ollama.js";
-import { replySplitMessage } from "../utils/helpers.js";
+import { replySplitMessage, stripLeadingMention } from "../utils/helpers.js";
 import { messages, modelInfo, setModelInfo } from "../state/conversations.js";
 import type { OllamaShowResponse, OllamaGenerateChunk } from "../types.js";
 import type { Event } from "./index.js";
@@ -64,8 +64,7 @@ const event: Event<Events.MessageCreate> = {
 
 			const systemMessage: string = systemMessages.join("\n\n");
 
-			let userInput: string = message.content
-				.replace(new RegExp("^\\s*" + myMention.source), "").trim();
+			let userInput: string = stripLeadingMention(message.content, myMention);
 
 			if (userInput.startsWith(".")) {
 				const args = userInput.substring(1).split(/\s+/g);

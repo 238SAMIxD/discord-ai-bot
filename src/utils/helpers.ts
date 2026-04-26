@@ -64,6 +64,11 @@ export function getBoolean(str: string | undefined): boolean {
 	return normalized !== "" && normalized != "false" && normalized != "no" && normalized != "off" && normalized != "0";
 }
 
+export function stripLeadingMention(content: string, mentionPattern: RegExp): string {
+	// Allow commands like "   @Bot .help" by ignoring whitespace before the leading mention.
+	return content.replace(new RegExp(`^\\s*(?:${mentionPattern.source})`), "").trim();
+}
+
 export function parseJSONMessage(str: string): string {
 	return str.split(/[\r\n]+/g).map(line => {
 		const result: unknown = JSON.parse(`"${line}"`);
