@@ -69,12 +69,71 @@ export function stripLeadingMention(content: string, mentionPattern: RegExp): st
 	return content.replace(new RegExp(`^\\s*(?:${mentionPattern.source})`), "").trim();
 }
 
+function unescapeMessageLine(line: string): string {
+	let result = "";
+
+	for (let i = 0; i < line.length; ++i) {
+		if (line[i] !== "\\") {
+			result += line[i];
+			continue;
+		}
+
+		const nextChar = line[++i];
+		if (nextChar == null) {
+			result += "\\";
+			break;
+		}
+
+		switch (nextChar) {
+			case "\\":
+				result += "\\";
+				break;
+			case "\"":
+				result += "\"";
+				break;
+			case "n":
+				result += "\n";
+				break;
+			case "r":
+				result += "\r";
+				break;
+			case "u": {
+				const codePoint = line.slice(i + 1, i + 5);
+				if (/^[0-9a-fA-F]{4}$/.test(codePoint)) {
+					result += String.fromCharCode(Number.parseInt(codePoint, 16));
+					i += 4;
+					break;
+				}
+				result += "\\u";
+				break;
+			}
+			default:
+				result += `\\${nextChar}`;
+				break;
+		}
+	}
+
+	return result;
+}
+
+export function parseJSONLines<T>(str: string, sourceName = "response"): T[] {
+	const result: T[] = [];
+
+	for (const [index, line] of str.split(/\r?\n/g).entries()) {
+		if (line.trim().length === 0) continue;
+
+		try {
+			result.push(JSON.parse(line) as T);
+		} catch (error) {
+			throw new Error(`Invalid ${sourceName} JSON on line ${index + 1}`, { cause: error });
+		}
+	}
+
+	return result;
+}
+
 export function parseJSONMessage(str: string): string {
-	return str.split(/[\r\n]+/g).map(line => {
-		const result: unknown = JSON.parse(`"${line}"`);
-		if (typeof result !== "string") throw new Error("Invalid syntax in .env file");
-		return result;
-	}).join("\n");
+	return str.split(/[\r\n]+/g).map(unescapeMessageLine).join("\n");
 }
 
 export function parseEnvString(str: string | undefined): string | null {

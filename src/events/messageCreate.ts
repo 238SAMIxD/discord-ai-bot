@@ -4,7 +4,7 @@ import { config } from "../config.js";
 import { log, logError } from "../utils/logger.js";
 import { LogLevel } from "../types.js";
 import { makeRequest } from "../api/ollama.js";
-import { replySplitMessage, stripLeadingMention } from "../utils/helpers.js";
+import { parseJSONLines, replySplitMessage, stripLeadingMention } from "../utils/helpers.js";
 import { messages, modelInfo, setModelInfo } from "../state/conversations.js";
 import type { OllamaShowResponse, OllamaGenerateChunk } from "../types.js";
 import type { Event } from "./index.js";
@@ -208,9 +208,7 @@ const event: Event<Events.MessageCreate> = {
 					throw new TypeError("response is not a string, this may be an error with ollama");
 				}
 
-				response = rawResponse.split("\n").filter(e => !!e).map(e => {
-					return JSON.parse(e) as OllamaGenerateChunk;
-				});
+				response = parseJSONLines<OllamaGenerateChunk>(rawResponse, "Ollama stream");
 			} catch (error) {
 				if (typingInterval != null) {
 					clearInterval(typingInterval);
