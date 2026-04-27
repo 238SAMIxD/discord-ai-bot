@@ -15,10 +15,18 @@ test("stripLeadingMention only removes mentions at the start of the message", ()
 	assert.equal(stripLeadingMention("hello <@123> .help", mentionPattern), "hello <@123> .help");
 });
 
-test("parseJSONMessage preserves plain quotes while decoding escaped sequences", () => {
-	const input = String.raw`You said "hello"\nPath: C:\Users\bot`;
+test("parseJSONMessage preserves plain quotes while decoding JSON-style escape sequences", () => {
+	const input = String.raw`You said "hello"\nPath: C:\\Users\\bot`;
+	const tabInput = String.raw`Column1\tColumn2`;
+	const unicodeInput = String.raw`Smile: \u263A`;
+	const surrogatePairInput = String.raw`Emoji: \uD83D\uDE00`;
+	const miscEscapesInput = String.raw`Slash: \/ Backspace:\b FormFeed:\f`;
 
 	assert.equal(parseJSONMessage(input), "You said \"hello\"\nPath: C:\\Users\\bot");
+	assert.equal(parseJSONMessage(tabInput), "Column1\tColumn2");
+	assert.equal(parseJSONMessage(unicodeInput), "Smile: ☺");
+	assert.equal(parseJSONMessage(surrogatePairInput), "Emoji: 😀");
+	assert.equal(parseJSONMessage(miscEscapesInput), "Slash: / Backspace:\b FormFeed:\f");
 });
 
 test("parseJSONLines parses newline-delimited JSON and reports malformed lines", () => {

@@ -91,11 +91,23 @@ function unescapeMessageLine(line: string): string {
 			case "\"":
 				result += "\"";
 				break;
+			case "/":
+				result += "/";
+				break;
+			case "b":
+				result += "\b";
+				break;
+			case "f":
+				result += "\f";
+				break;
 			case "n":
 				result += "\n";
 				break;
 			case "r":
 				result += "\r";
+				break;
+			case "t":
+				result += "\t";
 				break;
 			case "u": {
 				const codePoint = line.slice(i + 1, i + 5);

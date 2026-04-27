@@ -119,8 +119,19 @@ const event: Event<Events.MessageCreate> = {
 			if (message.type == MessageType.Default && (config.requiresMention && message.guild && !message.content.match(myMention))) return;
 
 			if (message.guild) {
-				await message.guild.channels.fetch();
-				await message.guild.members.fetch();
+				const channelMentionIds = [...new Set(
+					[...userInput.matchAll(/<#([0-9]+)>/g)].map(([, id]) => id)
+				)].filter(id => !message.guild!.channels.cache.has(id));
+				const memberMentionIds = [...new Set(
+					[...userInput.matchAll(/<@!?([0-9]+)>/g)]
+						.map(([, id]) => id)
+						.filter(id => id !== message.author.id)
+				)].filter(id => !message.guild!.members.cache.has(id));
+
+				await Promise.allSettled([
+					...channelMentionIds.map(id => message.guild!.channels.fetch(id)),
+					...memberMentionIds.map(id => message.guild!.members.fetch(id))
+				]);
 			}
 
 			userInput = userInput

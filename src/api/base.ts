@@ -5,6 +5,7 @@ import { shuffleArray } from "../utils/helpers.js";
 import type { Server } from "../types.js";
 
 const SERVER_WAIT_TIMEOUT_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 30_000;
 
 export async function makeBaseRequest<T = unknown>(
 	servers: Server[],
@@ -17,6 +18,8 @@ export async function makeBaseRequest<T = unknown>(
 	if (servers.length == 0) {
 		throw new Error("No servers available");
 	}
+
+	const normalizedPath = path.startsWith("/") ? path.substring(1) : path;
 
 	if (servers.every(server => !server.available)) {
 		log.log(LogLevel.Debug, "All servers are busy, waiting for an available server.");
@@ -34,27 +37,26 @@ export async function makeBaseRequest<T = unknown>(
 	if (randomServer) order = shuffleArray(order);
 
 	for (const i of order) {
+		if (!servers[i].available) continue;
+
+		servers[i].available = false;
 		try {
-			if (!servers[i].available) continue;
 			const url = new URL(servers[i].url.toString());
-
-			servers[i].available = false;
-
-			if (path.startsWith("/")) path = path.substring(1);
 			if (!url.pathname.endsWith("/")) url.pathname += "/";
-			url.pathname += path;
+			url.pathname += normalizedPath;
 
 			log.log(LogLevel.Debug, `Making request to ${url}`);
 			const result = await axios({
 				method, url: url.toString(), data,
-				responseType
+				responseType,
+				timeout: REQUEST_TIMEOUT_MS
 			});
-			servers[i].available = true;
 			return result.data as T;
 		} catch (err) {
-			servers[i].available = true;
 			error = err as Error;
 			logError(error);
+		} finally {
+			servers[i].available = true;
 		}
 	}
 	if (!error) {
