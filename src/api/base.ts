@@ -4,7 +4,7 @@ import { LogLevel } from "../types.js";
 import { shuffleArray } from "../utils/helpers.js";
 import type { Server } from "../types.js";
 
-const SERVER_WAIT_TIMEOUT_MS = 60_000;
+const SERVER_WAIT_TIMEOUT_MS = 10_000;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export async function makeBaseRequest<T = unknown>(

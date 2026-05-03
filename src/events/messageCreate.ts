@@ -13,25 +13,29 @@ const event: Event<Events.MessageCreate> = {
 	name: Events.MessageCreate,
 	once: false,
 	async execute(message) {
-		let typing = false;
 		try {
 			await message.fetch();
+		} catch (error) {
+			logError(error);
+			return;
+		}
 
-			const channelID: string = message.channel.id;
-			if (message.guild && !config.channels.includes(channelID)) return;
+		const channelID: string = message.channel.id;
+		if (message.guild && !config.channels.includes(channelID)) return;
 
-			if (!message.author.id) return;
-			if (message.author.bot || message.author.id == message.client.user!.id) return;
+		if (!message.author.id) return;
+		if (message.author.bot || message.author.id == message.client.user!.id) return;
 
-			const botRole = message.guild?.members?.me?.roles?.botRole;
-			const myMention = new RegExp(`<@((!?${message.client.user!.id}${botRole ? `)|(&${botRole.id}` : ""}))>`, "g");
+		const botRole = message.guild?.members?.me?.roles?.botRole;
+		const myMention = new RegExp(`<@((!?${message.client.user!.id}${botRole ? `)|(&${botRole.id}` : ""})})>`, "g");
 
-			if (typeof message.content !== "string" || message.content.length == 0) {
-				return;
-			}
+		if (typeof message.content !== "string" || message.content.length == 0) {
+			return;
+		}
 
-			let context: number[] | null = null;
-			if (message.type == MessageType.Reply) {
+		let context: number[] | null = null;
+		if (message.type == MessageType.Reply) {
+			try {
 				const reply = await message.fetchReference();
 				if (!reply) return;
 				if (reply.author.id != message.client.user!.id) return;
@@ -39,9 +43,16 @@ const event: Event<Events.MessageCreate> = {
 				const storedContext = messages[channelID][reply.id];
 				if (storedContext == null || typeof storedContext === "number") return;
 				context = storedContext;
-			} else if (message.type != MessageType.Default) {
+			} catch (error) {
+				logError(error);
 				return;
 			}
+		} else if (message.type != MessageType.Default) {
+			return;
+		}
+
+		let typing = false;
+		try {
 
 			if (modelInfo == null) {
 				let rawResponse: string | OllamaShowResponse = await makeRequest<string>("/api/show", "post", {
