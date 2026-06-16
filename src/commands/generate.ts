@@ -229,7 +229,7 @@ const generate: BotCommand = {
           streamState.buffer += chunk.toString();
           const lines = streamState.buffer.split("\n");
           streamState.buffer = lines.pop() ?? "";
-          
+
           for (const line of lines) {
             const trimmedLine = line.trim();
             if (trimmedLine.length === 0) continue;

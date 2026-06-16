@@ -1,7 +1,6 @@
 import { Client, ClientEvents } from "discord.js";
 import ready from "./ready.js";
 import interactionCreate from "./interactionCreate.js";
-import messageCreate from "./messageCreate.js";
 
 export interface Event<K extends keyof ClientEvents = keyof ClientEvents> {
   name: K;
@@ -9,7 +8,7 @@ export interface Event<K extends keyof ClientEvents = keyof ClientEvents> {
   execute: (...args: ClientEvents[K]) => Promise<void> | void;
 }
 
-const events = [ready, interactionCreate, messageCreate];
+const events = [ready, interactionCreate];
 
 export function registerEvents(client: Client) {
   for (const e of events) {
