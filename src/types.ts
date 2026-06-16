@@ -1,3 +1,11 @@
+import type {
+  SlashCommandBuilder,
+  SlashCommandOptionsOnlyBuilder,
+  RESTPostAPIChatInputApplicationCommandsJSONBody,
+  ChatInputCommandInteraction,
+  AutocompleteInteraction,
+} from "discord.js";
+
 /**
  * Server instance for Ollama or Stable Diffusion endpoints.
  */
@@ -130,4 +138,17 @@ export class Logger {
         break;
     }
   }
+}
+
+/**
+ * Interface representing a slash command in the bot.
+ */
+export interface BotCommand {
+  data:
+    | SlashCommandBuilder
+    | SlashCommandOptionsOnlyBuilder
+    | RESTPostAPIChatInputApplicationCommandsJSONBody
+    | Omit<SlashCommandBuilder, "addSubcommand" | "addSubcommandGroup">;
+  execute(interaction: ChatInputCommandInteraction): Promise<void>;
+  autocomplete?(interaction: AutocompleteInteraction): Promise<void>;
 }

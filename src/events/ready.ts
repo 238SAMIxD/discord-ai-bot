@@ -23,7 +23,7 @@ const event: Event<Events.ClientReady> = {
     client.user!.setPresence({ activities: [], status: "online" });
     try {
       await rest.put(Routes.applicationCommands(client.user!.id), {
-        body: commands,
+        body: commands.map((c) => c.data),
       });
       log.log(
         LogLevel.Info,

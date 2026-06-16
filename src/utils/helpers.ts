@@ -1,4 +1,6 @@
-import { Message } from "discord.js";
+import { CommandInteraction, Message } from "discord.js";
+import axios from "axios";
+import type { ResponseType } from "axios";
 
 export function shuffleArray<T>(array: T[]): T[] {
   for (let i = array.length - 1; i > 0; i--) {
@@ -201,6 +203,46 @@ export async function replySplitMessage(
     } else if ("send" in replyMessage.channel) {
       replyMessages.push(await replyMessage.channel.send(responseMessages[i]));
     }
+  }
+  return replyMessages;
+}
+
+export function downloadAttachment(
+  url: string,
+  responseType: ResponseType = "json",
+) {
+  return axios.get(url, {
+    responseType,
+  });
+}
+
+export async function replySplitInteraction(
+  interaction: CommandInteraction,
+  content: string,
+  defer?: boolean,
+): Promise<Message[]> {
+  const responseMessages = splitText(content, 2000).map((text) => ({
+    content: text,
+  }));
+
+  const replyMessages: Message[] = [];
+  if (defer) {
+    const initialMessage = await interaction.editReply(responseMessages[0]);
+    replyMessages.push(initialMessage);
+  } else {
+    const initialMessage = await interaction.reply({
+      ...responseMessages[0],
+      fetchReply: true,
+    });
+    replyMessages.push(initialMessage);
+  }
+
+  for (let i = 1; i < responseMessages.length; ++i) {
+    const nextMessage = await interaction.followUp({
+      ...responseMessages[i],
+      fetchReply: true,
+    });
+    replyMessages.push(nextMessage);
   }
   return replyMessages;
 }

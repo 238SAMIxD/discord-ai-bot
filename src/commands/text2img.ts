@@ -1,6 +1,13 @@
-import { SlashCommandBuilder } from "discord.js";
+import {
+  SlashCommandBuilder,
+  ChatInputCommandInteraction,
+  MessageFlags,
+} from "discord.js";
+import { makeStableDiffusionRequest } from "../api/stableDiffusion.js";
+import { logError } from "../utils/logger.js";
+import { BotCommand, StableDiffusionResponse } from "../types.js";
 
-const text2img = new SlashCommandBuilder()
+const data = new SlashCommandBuilder()
   .setName("text2img")
   .setDescription("Convert text to image")
   .addStringOption((option) =>
@@ -55,5 +62,58 @@ const text2img = new SlashCommandBuilder()
       .setDescription("Enhance prompt")
       .setRequired(false),
   );
+
+const text2img: BotCommand = {
+  data,
+  async execute(interaction: ChatInputCommandInteraction) {
+    try {
+      await interaction.deferReply();
+      const prompt = interaction.options.getString("prompt", true);
+      const width = interaction.options.getInteger("width") ?? 256;
+      const height = interaction.options.getInteger("height") ?? 256;
+      const steps = interaction.options.getInteger("steps") ?? 10;
+      const batch_count = interaction.options.getInteger("batch_count") ?? 1;
+      const batch_size = interaction.options.getInteger("batch_size") ?? 1;
+      const enhance_prompt = interaction.options.getBoolean("enhance_prompt")
+        ? "yes"
+        : "no";
+
+      const stableDiffusionResponse =
+        await makeStableDiffusionRequest<StableDiffusionResponse>(
+          "/sdapi/v1/txt2img",
+          "post",
+          {
+            prompt,
+            width,
+            height,
+            steps,
+            num_inference_steps: steps,
+            batch_count,
+            batch_size,
+            enhance_prompt,
+          },
+        );
+      const images = (stableDiffusionResponse.images ?? []).map((image) =>
+        Buffer.from(image, "base64"),
+      );
+      await interaction.editReply({
+        content: `Here are images from prompt \`${prompt}\``,
+        files: images,
+      });
+    } catch (error) {
+      logError(error);
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({
+          content: "Error, please check the console",
+        });
+      } else {
+        await interaction.reply({
+          content: "Error, please check the console",
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+    }
+  },
+};
 
 export default text2img;

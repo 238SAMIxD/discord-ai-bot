@@ -50,6 +50,10 @@ export const config = {
     getBoolean(process.env.USE_INITIAL_PROMPT) && !!initialPrompt,
   requiresMention: getBoolean(process.env.REQUIRES_MENTION),
   requestTimeout: parseTimeout(process.env.REQUEST_TIMEOUT, 0),
+  maxAttachmentTextLength: parseTimeout(
+    process.env.MAX_ATTACHMENT_TEXT_LENGTH,
+    8000,
+  ),
 };
 
 if (config.servers.length === 0) {
