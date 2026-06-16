@@ -1,4 +1,4 @@
-package-lock.json
+*.test.ts
 node_modules/
 .env
 dist/

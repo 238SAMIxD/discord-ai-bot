@@ -2,13 +2,13 @@ import { ShardingManager } from "discord.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
-import { Logger, LogLevel } from "./types.js";
+import { Logger, LogLevel } from "./utils/logger.js";
 import type { ShardMessage } from "./types.js";
 
 dotenv.config();
 
 const production =
-  process.env.NODE_ENV == "prod" || process.env.NODE_ENV == "production";
+  process.env.NODE_ENV === "prod" || process.env.NODE_ENV === "production";
 const log = new Logger(production, "Shard Manager");
 
 log.log(LogLevel.Info, "Loading");

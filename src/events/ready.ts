@@ -1,16 +1,15 @@
 import { Events } from "discord.js";
 import { REST, Routes } from "discord.js";
-import commands from "../commands/commands.js";
-import { log, logError } from "../utils/logger.js";
-import { LogLevel } from "../types.js";
-import { config } from "../config.js";
+import { getCommands } from "../commands/commands.js";
+import { log, logError, LogLevel } from "../utils/logger.js";
+import { getConfig } from "../config.js";
 import type { Event } from "./index.js";
 
 const event: Event<Events.ClientReady> = {
   name: Events.ClientReady,
   once: true,
   async execute(client) {
-    const rest = new REST({ version: "10" }).setToken(config.token);
+    const rest = new REST({ version: "10" }).setToken(getConfig().token);
     try {
       await client.guilds.fetch();
     } catch (error) {
@@ -20,13 +19,14 @@ const event: Event<Events.ClientReady> = {
         "Failed to fetch guilds; slash commands may not register correctly.",
       );
     }
-    client.user!.setPresence({ activities: [], status: "online" });
+    if (!client.user) return;
+    client.user.setPresence({ activities: [], status: "online" });
 
-    log.log(LogLevel.Info, `Bot is ready! Logged in as ${client.user!.tag}`);
+    log.log(LogLevel.Info, `Bot is ready! Logged in as ${client.user.tag}`);
 
     try {
-      await rest.put(Routes.applicationCommands(client.user!.id), {
-        body: commands.map((c) => c.data),
+      await rest.put(Routes.applicationCommands(client.user.id), {
+        body: getCommands().map((c) => c.data),
       });
       log.log(
         LogLevel.Info,

@@ -1,5 +1,70 @@
-import { Logger, LogLevel } from "../types.js";
 import { AxiosError } from "axios";
+
+/**
+ * Serializable logger state for IPC transfer.
+ */
+export interface LoggerData {
+  production: boolean;
+  name: string;
+}
+
+/**
+ * Log severity levels.
+ */
+export enum LogLevel {
+  Info = "info",
+  Debug = "debug",
+  Error = "error",
+}
+
+/**
+ * Simple logger that supports production/debug modes and named contexts.
+ *
+ * The instance is callable via the `log()` method.
+ */
+export class Logger {
+  public readonly data: LoggerData;
+  private readonly production: boolean;
+  private readonly name: string;
+
+  constructor(production: boolean, name: string);
+  constructor(data: LoggerData);
+  constructor(productionOrData: boolean | LoggerData, name?: string) {
+    if (typeof productionOrData === "object") {
+      this.data = productionOrData;
+      this.production = productionOrData.production;
+      this.name = productionOrData.name;
+    } else {
+      this.production = productionOrData;
+      this.name = name ?? "Logger";
+      this.data = { production: this.production, name: this.name };
+    }
+  }
+
+  /**
+   * Log a message at the given severity level.
+   * Debug messages are suppressed in production mode.
+   */
+  log<T>(level: LogLevel, ...args: T[]): void {
+    if (level === LogLevel.Debug && this.production) return;
+
+    const timestamp = new Date().toISOString();
+    const prefix = `[${timestamp}] [${this.name}] [${level.toUpperCase()}]`;
+
+    switch (level) {
+      case LogLevel.Error:
+        console.error(prefix, ...args);
+        break;
+      case LogLevel.Debug:
+        console.debug(prefix, ...args);
+        break;
+      case LogLevel.Info:
+      default:
+        console.log(prefix, ...args);
+        break;
+    }
+  }
+}
 
 function getInitialLoggerName(): string {
   const shardEnv = process.env.SHARDS;

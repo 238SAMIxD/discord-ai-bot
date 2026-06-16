@@ -6,7 +6,11 @@ import type {
   AutocompleteInteraction,
 } from "discord.js";
 
-
+declare module "discord.js" {
+  interface Client {
+    shardID?: number;
+  }
+}
 
 /**
  * Server instance for Ollama or Stable Diffusion endpoints.
@@ -22,7 +26,7 @@ export interface Server {
 export interface ChannelMessages {
   amount: number;
   last: number[] | null;
-  [messageId: string]: number[] | number | null;
+  [messageId: string]: number[] | number | null | undefined;
 }
 
 /**
@@ -124,7 +128,7 @@ export interface SDTxt2ImgRequest {
   hr_upscaler?: string;
   batch_count?: number;
   batch_size?: number;
-  enhance_prompt?: string;
+  enhance_prompt?: boolean;
 }
 
 /**
@@ -139,75 +143,11 @@ export interface SDResponse {
 /**
  * IPC message sent from the shard manager to a shard.
  */
+import type { LoggerData } from "./utils/logger.js";
+
 export interface ShardMessage {
   shardID?: number;
   logger?: LoggerData;
-}
-
-/**
- * Serializable logger state for IPC transfer.
- */
-export interface LoggerData {
-  production: boolean;
-  name: string;
-}
-
-/**
- * Log severity levels.
- */
-export enum LogLevel {
-  Info = "info",
-  Debug = "debug",
-  Error = "error",
-}
-
-/**
- * Simple logger that supports production/debug modes and named contexts.
- *
- * The instance is callable via the `log()` method.
- */
-export class Logger {
-  public readonly data: LoggerData;
-  private readonly production: boolean;
-  private readonly name: string;
-
-  constructor(production: boolean, name: string);
-  constructor(data: LoggerData);
-  constructor(productionOrData: boolean | LoggerData, name?: string) {
-    if (typeof productionOrData === "object") {
-      this.data = productionOrData;
-      this.production = productionOrData.production;
-      this.name = productionOrData.name;
-    } else {
-      this.production = productionOrData;
-      this.name = name ?? "Logger";
-      this.data = { production: this.production, name: this.name };
-    }
-  }
-
-  /**
-   * Log a message at the given severity level.
-   * Debug messages are suppressed in production mode.
-   */
-  log<T>(level: LogLevel, ...args: T[]): void {
-    if (level === LogLevel.Debug && this.production) return;
-
-    const timestamp = new Date().toISOString();
-    const prefix = `[${timestamp}] [${this.name}] [${level.toUpperCase()}]`;
-
-    switch (level) {
-      case LogLevel.Error:
-        console.error(prefix, ...args);
-        break;
-      case LogLevel.Debug:
-        console.debug(prefix, ...args);
-        break;
-      case LogLevel.Info:
-      default:
-        console.log(prefix, ...args);
-        break;
-    }
-  }
 }
 
 /**

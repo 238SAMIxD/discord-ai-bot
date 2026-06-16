@@ -2,18 +2,18 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   AutocompleteInteraction,
-  Message,
 } from "discord.js";
 import { makeRequest, getModels } from "../api/ollama.js";
 import { log, logError } from "../utils/logger.js";
 import {
   replySplitInteraction,
   downloadAttachment,
-  splitText,
 } from "../utils/helpers.js";
+import { handleStreamResponse } from "../utils/stream.js";
 import { extractTextFromPDF } from "../utils/pdf.js";
-import { config } from "../config.js";
-import { LogLevel, BotCommand, OllamaShowResponse, OllamaGenerateResponse, OllamaShowRequest, OllamaGenerateRequest } from "../types.js";
+import { getConfig } from "../config.js";
+import { BotCommand, OllamaShowResponse, OllamaGenerateResponse, OllamaShowRequest, OllamaGenerateRequest } from "../types.js";
+import { LogLevel } from "../utils/logger.js";
 
 const data = new SlashCommandBuilder()
   .setName("generate")
@@ -71,7 +71,7 @@ const generate: BotCommand = {
     try {
       await interaction.deferReply();
       const prompt = interaction.options.getString("prompt", true);
-      const model = interaction.options.getString("model") ?? config.model;
+      const model = interaction.options.getString("model") ?? getConfig().model;
       const stream = interaction.options.getBoolean("stream") ?? false;
 
       // Process attachments (up to 5)
@@ -106,9 +106,9 @@ const generate: BotCommand = {
           textAttachments.map(async (att) => {
             const res = await downloadAttachment(att.url, "text");
             let text = String(res.data);
-            if (text.length > config.maxAttachmentTextLength) {
+            if (text.length > getConfig().maxAttachmentTextLength) {
               text =
-                text.substring(0, config.maxAttachmentTextLength) +
+                text.substring(0, getConfig().maxAttachmentTextLength) +
                 "\n\n[File truncated due to size]";
             }
             return `\n\n📄 File - ${att.name}:\n${text}`;
@@ -125,9 +125,9 @@ const generate: BotCommand = {
             let text = await extractTextFromPDF(
               Buffer.from(res.data as ArrayBuffer),
             );
-            if (text.length > config.maxAttachmentTextLength) {
+            if (text.length > getConfig().maxAttachmentTextLength) {
               text =
-                text.substring(0, config.maxAttachmentTextLength) +
+                text.substring(0, getConfig().maxAttachmentTextLength) +
                 "\n\n[PDF truncated due to size]";
             }
             return `\n\n📑 PDF - ${att.name}:\n${text}`;
@@ -149,7 +149,7 @@ const generate: BotCommand = {
       }
 
       const systemMessages: string[] = [];
-      if (config.useModelSystemMessage) {
+      if (getConfig().useModelSystemMessage) {
         try {
           const info = await makeRequest<OllamaShowResponse, OllamaShowRequest>(
             "/api/show",
@@ -165,8 +165,8 @@ const generate: BotCommand = {
           );
         }
       }
-      if (config.useCustomSystemMessage && config.customSystemMessage) {
-        systemMessages.push(config.customSystemMessage);
+      if (getConfig().useCustomSystemMessage && getConfig().customSystemMessage) {
+        systemMessages.push(getConfig().customSystemMessage!);
       }
 
       const systemMessage = systemMessages.join("\n\n");
@@ -202,84 +202,11 @@ const generate: BotCommand = {
           "stream",
         );
 
-        const streamState = {
-          fullResponse: "",
-          buffer: "",
-          lastEditTime: Date.now(),
-          editPromise: Promise.resolve() as Promise<Message | void>,
-        };
-
-        const updateMessage = async (force = false) => {
-          const now = Date.now();
-          if (force || now - streamState.lastEditTime >= 1000) {
-            streamState.lastEditTime = now;
-            await streamState.editPromise;
-            const cleanText = streamState.fullResponse.trim();
-            if (cleanText.length === 0) return;
-            try {
-              const segments = splitText(cleanText, 2000);
-              streamState.editPromise = interaction.editReply(segments[0]);
-              await streamState.editPromise;
-            } catch {
-              // Ignore minor edit/rate limit errors
-            }
-          }
-        };
-
-        responseStream.on("data", (chunk: Buffer) => {
-          streamState.buffer += chunk.toString();
-          const lines = streamState.buffer.split("\n");
-          streamState.buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (trimmedLine.length === 0) continue;
-            try {
-              const parsedData = JSON.parse(trimmedLine) as OllamaGenerateResponse;
-              const text = parsedData.response || "";
-              streamState.fullResponse += text;
-            } catch {
-              // Partial JSON line
-            }
-          }
-          void updateMessage();
-        });
-
-        responseStream.on("end", async () => {
-          if (streamState.buffer.trim().length > 0) {
-            try {
-              const parsedData = JSON.parse(streamState.buffer.trim()) as OllamaGenerateResponse;
-              const text = parsedData.response || "";
-              streamState.fullResponse += text;
-            } catch {
-              // Ignore
-            }
-          }
-
-          await updateMessage(true);
-          const cleanText = streamState.fullResponse.trim() || "(No response)";
-
-          const segments = splitText(cleanText, 2000);
-          if (segments.length > 1) {
-            try {
-              for (let i = 1; i < segments.length; i++) {
-                await interaction.followUp({
-                  content: segments[i],
-                  fetchReply: true,
-                });
-              }
-            } catch (err) {
-              logError(err);
-            }
-          }
-        });
-
-        responseStream.on("error", (err: Error) => {
-          logError(err);
-          void interaction.editReply({
-            content: "Error occurred while streaming response.",
-          });
-        });
+        handleStreamResponse<OllamaGenerateResponse>(
+          interaction,
+          responseStream,
+          () => { /* no history tracking for /generate */ },
+        );
       }
     } catch (error) {
       logError(error);

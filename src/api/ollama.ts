@@ -1,8 +1,7 @@
 import axios from "axios";
-import { config } from "../config.js";
+import { getConfig } from "../config.js";
 import { makeBaseRequest } from "./base.js";
-import { log } from "../utils/logger.js";
-import { LogLevel } from "../types.js";
+import { log, LogLevel } from "../utils/logger.js";
 
 export interface OllamaModelInfo {
   name: string;
@@ -26,13 +25,13 @@ export async function makeRequest<TResponse, TRequest = object>(
     | "stream" = "text",
 ): Promise<TResponse> {
   return makeBaseRequest<TResponse, TRequest>(
-    config.servers,
-    config.randomServer,
+    getConfig().servers,
+    getConfig().randomServer,
     path,
     method,
     data,
     responseType,
-    config.requestTimeout,
+    getConfig().requestTimeout,
   );
 }
 
@@ -40,8 +39,8 @@ export async function getModels(): Promise<OllamaModelInfo[]> {
   const allModels: OllamaModelInfo[] = [];
   const seenModels = new Set<string>();
 
-  await Promise.allSettled(
-    config.servers.map(async (server) => {
+  const results = await Promise.allSettled(
+    getConfig().servers.map(async (server) => {
       try {
         const url = new URL(server.url.toString());
         if (!url.pathname.endsWith("/")) url.pathname += "/";
@@ -50,20 +49,27 @@ export async function getModels(): Promise<OllamaModelInfo[]> {
         const response = await axios.get<OllamaTagsResponse>(url.toString(), {
           timeout: 5000,
         });
-
-        if (response.data && response.data.models) {
-          for (const model of response.data.models) {
-            if (!seenModels.has(model.model)) {
-              seenModels.add(model.model);
-              allModels.push(model);
-            }
-          }
-        }
-      } catch (error) {
-        log.log(LogLevel.Debug, `Failed to fetch models from Ollama server ${server.url}`);
+        return response.data;
+      } catch (_error) {
+        log.log(
+          LogLevel.Debug,
+          `Failed to fetch models from Ollama server ${server.url}`,
+        );
+        return null;
       }
-    })
+    }),
   );
+
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value?.models) {
+      for (const model of result.value.models) {
+        if (!seenModels.has(model.model)) {
+          seenModels.add(model.model);
+          allModels.push(model);
+        }
+      }
+    }
+  }
 
   return allModels;
 }

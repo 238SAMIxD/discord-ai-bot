@@ -1,14 +1,23 @@
 import { Events, MessageFlags } from "discord.js";
 import { logError } from "../utils/logger.js";
 import type { Event } from "./index.js";
-import commands from "../commands/commands.js";
+import { getCommands } from "../commands/commands.js";
+import { getConfig } from "../config.js";
 
 const event: Event<Events.InteractionCreate> = {
   name: Events.InteractionCreate,
   once: false,
   async execute(interaction) {
+    const config = getConfig();
+    if (
+      config.channels.length > 0 &&
+      !config.channels.includes(interaction.channelId ?? "")
+    ) {
+      return;
+    }
+
     if (interaction.isAutocomplete()) {
-      const command = commands.find(
+      const command = getCommands().find(
         (c) => c.data.name === interaction.commandName,
       );
       if (!command) return;
@@ -25,7 +34,7 @@ const event: Event<Events.InteractionCreate> = {
 
     if (!interaction.isChatInputCommand()) return;
 
-    const command = commands.find(
+    const command = getCommands().find(
       (c) => c.data.name === interaction.commandName,
     );
     if (!command) return;

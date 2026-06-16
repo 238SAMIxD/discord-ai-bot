@@ -74,9 +74,7 @@ const text2img: BotCommand = {
       const steps = interaction.options.getInteger("steps") ?? 10;
       const batch_count = interaction.options.getInteger("batch_count") ?? 1;
       const batch_size = interaction.options.getInteger("batch_size") ?? 1;
-      const enhance_prompt = interaction.options.getBoolean("enhance_prompt")
-        ? "yes"
-        : "no";
+      const enhance_prompt = interaction.options.getBoolean("enhance_prompt") ?? false;
 
       const payload: SDTxt2ImgRequest = {
         prompt,

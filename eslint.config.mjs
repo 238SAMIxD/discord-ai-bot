@@ -23,13 +23,12 @@ export default tseslint.config(
 				allowSingleLine: true
 			}],
 
-			"comma-dangle": ["error", "never"],
 			"comma-spacing": "error",
 			"comma-style": "error",
 			curly: ["error", "multi-line", "consistent"],
 			"dot-location": ["error", "property"],
 
-			indent: ["error", "tab", {
+			indent: ["error", 2, {
 				SwitchCase: 1
 			}],
 
@@ -96,4 +95,4 @@ export default tseslint.config(
 		}
 	},
 	eslintConfigPrettier
-);
+);

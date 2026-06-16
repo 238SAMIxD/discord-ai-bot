@@ -6,7 +6,7 @@ import {
 import { getModels } from "../api/ollama.js";
 import { getStableDiffusionModels } from "../api/stableDiffusion.js";
 import { logError } from "../utils/logger.js";
-import { config } from "../config.js";
+import { getConfig } from "../config.js";
 import { BotCommand } from "../types.js";
 
 const data = new SlashCommandBuilder()
@@ -54,7 +54,7 @@ const models: BotCommand = {
 
         await interaction.editReply({ embeds: [embed] });
       } else {
-        if (config.stableDiffusionServers.length === 0) {
+        if (getConfig().stableDiffusionServers.length === 0) {
           await interaction.editReply({
             content: "No Stable Diffusion servers are configured.",
           });

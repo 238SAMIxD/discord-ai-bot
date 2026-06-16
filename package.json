@@ -1,11 +1,12 @@
 {
-  "name": "discord-bot-template",
+  "name": "discord-ai-bot",
   "version": "1.0.0",
   "description": "A basic Discord bot template using TypeScript and discord.js",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
     "start": "node dist/index.js",
+    "test": "node --import tsx --test src/**/*.test.ts",
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "test:tsc": "tsc --noEmit",

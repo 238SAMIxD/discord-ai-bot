@@ -1,10 +1,13 @@
+import EventEmitter from "events";
 import axios from "axios";
-import { log, logError } from "../utils/logger.js";
-import { LogLevel } from "../types.js";
+
 import { shuffleArray } from "../utils/helpers.js";
+import { log, logError, LogLevel } from "../utils/logger.js";
+
 import type { Server } from "../types.js";
 
-const SERVER_WAIT_TIMEOUT_MS = 10_000;
+const SERVER_WAIT_TIMEOUT_MS = 60_000;
+const serverEmitter = new EventEmitter();
 
 export async function makeBaseRequest<TResponse, TRequest = object>(
   servers: Server[],
@@ -21,7 +24,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
     | "stream",
   timeoutMs = 0,
 ): Promise<TResponse> {
-  if (servers.length == 0) {
+  if (servers.length === 0) {
     throw new Error("No servers available");
   }
 
@@ -32,15 +35,35 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
       LogLevel.Debug,
       "All servers are busy, waiting for an available server.",
     );
-    const waitStart = Date.now();
-    while (servers.every((server) => !server.available)) {
-      if (Date.now() - waitStart > SERVER_WAIT_TIMEOUT_MS) {
-        throw new Error(
-          "All servers busy: timed out waiting for an available server",
+    await new Promise<void>((resolve, reject) => {
+      const onAvailable = () => {
+        if (servers.some((s) => s.available)) {
+          cleanup();
+          resolve();
+        }
+      };
+      const onTimeout = () => {
+        cleanup();
+        reject(
+          new Error(
+            "All servers busy: timed out waiting for an available server",
+          ),
         );
+      };
+      const timer = setTimeout(onTimeout, SERVER_WAIT_TIMEOUT_MS);
+      serverEmitter.on("available", onAvailable);
+
+      function cleanup() {
+        clearTimeout(timer);
+        serverEmitter.off("available", onAvailable);
       }
-      await new Promise((res) => setTimeout(res, 1000));
-    }
+
+      // Check one more time in case it became available before we attached the listener
+      if (servers.some((s) => s.available)) {
+        cleanup();
+        resolve();
+      }
+    });
   }
 
   let error: Error | null = null;
@@ -70,6 +93,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
       logError(error);
     } finally {
       servers[i].available = true;
+      serverEmitter.emit("available");
     }
   }
   if (!error) {

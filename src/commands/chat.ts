@@ -2,13 +2,14 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   AutocompleteInteraction,
-  Message,
 } from "discord.js";
 import { makeRequest, getModels } from "../api/ollama.js";
 import { log, logError } from "../utils/logger.js";
-import { replySplitInteraction, splitText } from "../utils/helpers.js";
-import { config } from "../config.js";
-import { LogLevel, BotCommand, OllamaShowResponse, OllamaChatResponse, OllamaShowRequest, OllamaChatRequest } from "../types.js";
+import { replySplitInteraction } from "../utils/helpers.js";
+import { handleStreamResponse } from "../utils/stream.js";
+import { getConfig } from "../config.js";
+import { BotCommand, OllamaShowResponse, OllamaChatResponse, OllamaShowRequest, OllamaChatRequest } from "../types.js";
+import { LogLevel } from "../utils/logger.js";
 import { chatHistory } from "../state/conversations.js";
 
 const data = new SlashCommandBuilder()
@@ -58,12 +59,12 @@ const chat: BotCommand = {
     try {
       await interaction.deferReply();
       const prompt = interaction.options.getString("prompt", true);
-      const model = interaction.options.getString("model") ?? config.model;
+      const model = interaction.options.getString("model") ?? getConfig().model;
       const stream = interaction.options.getBoolean("stream") ?? false;
       const channelID = interaction.channelId ?? "";
 
       const systemMessages: string[] = [];
-      if (config.useModelSystemMessage) {
+      if (getConfig().useModelSystemMessage) {
         try {
           const info = await makeRequest<OllamaShowResponse, OllamaShowRequest>(
             "/api/show",
@@ -79,8 +80,8 @@ const chat: BotCommand = {
           );
         }
       }
-      if (config.useCustomSystemMessage && config.customSystemMessage) {
-        systemMessages.push(config.customSystemMessage);
+      if (getConfig().useCustomSystemMessage && getConfig().customSystemMessage) {
+        systemMessages.push(getConfig().customSystemMessage!);
       }
 
       const systemMessage = systemMessages.join("\n\n");
@@ -128,92 +129,17 @@ const chat: BotCommand = {
           "stream",
         );
 
-        const streamState = {
-          fullResponse: "",
-          buffer: "",
-          lastEditTime: Date.now(),
-          editPromise: Promise.resolve() as Promise<Message | void>,
-        };
-
-        const updateMessage = async (force = false) => {
-          const now = Date.now();
-          if (force || now - streamState.lastEditTime >= 1000) {
-            streamState.lastEditTime = now;
-            await streamState.editPromise;
-            const cleanText = streamState.fullResponse.trim();
-            if (cleanText.length === 0) return;
-            try {
-              const segments = splitText(cleanText, 2000);
-              streamState.editPromise = interaction.editReply(segments[0]);
-              await streamState.editPromise;
-            } catch {
-              // Ignore minor edit/rate limit errors during streaming
-            }
-          }
-        };
-
-        responseStream.on("data", (chunk: Buffer) => {
-          streamState.buffer += chunk.toString();
-          const lines = streamState.buffer.split("\n");
-          streamState.buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (trimmedLine.length === 0) continue;
-            try {
-              const parsedData = JSON.parse(trimmedLine) as OllamaChatResponse;
-              const text = parsedData.message?.content || "";
-              streamState.fullResponse += text;
-            } catch {
-              // Partial JSON line or parse error
-            }
-          }
-          void updateMessage();
-        });
-
-        responseStream.on("end", async () => {
-          // Parse any final remaining string in the buffer
-          if (streamState.buffer.trim().length > 0) {
-            try {
-              const parsedData = JSON.parse(streamState.buffer.trim()) as OllamaChatResponse;
-              const text = parsedData.message?.content || "";
-              streamState.fullResponse += text;
-            } catch {
-              // Ignore
-            }
-          }
-
-          await updateMessage(true);
-          const cleanText = streamState.fullResponse.trim() || "(No response)";
-
-          chatHistory[channelID].push({ role: "user", content: prompt });
-          chatHistory[channelID].push({
-            role: "assistant",
-            content: cleanText,
-          });
-
-          // Send remaining segments if content exceeds 2000 characters
-          const segments = splitText(cleanText, 2000);
-          if (segments.length > 1) {
-            try {
-              for (let i = 1; i < segments.length; i++) {
-                await interaction.followUp({
-                  content: segments[i],
-                  fetchReply: true,
-                });
-              }
-            } catch (err) {
-              logError(err);
-            }
-          }
-        });
-
-        responseStream.on("error", (err: Error) => {
-          logError(err);
-          void interaction.editReply({
-            content: "Error occurred while streaming response.",
-          });
-        });
+        handleStreamResponse<OllamaChatResponse>(
+          interaction,
+          responseStream,
+          (cleanText) => {
+            chatHistory[channelID].push({ role: "user", content: prompt });
+            chatHistory[channelID].push({
+              role: "assistant",
+              content: cleanText,
+            });
+          },
+        );
       }
     } catch (error) {
       logError(error);

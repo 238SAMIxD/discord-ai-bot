@@ -1,8 +1,7 @@
 import axios from "axios";
-import { config } from "../config.js";
+import { getConfig } from "../config.js";
 import { makeBaseRequest } from "./base.js";
-import { log } from "../utils/logger.js";
-import { LogLevel } from "../types.js";
+import { log, LogLevel } from "../utils/logger.js";
 
 export interface StableDiffusionModel {
   title: string;
@@ -15,13 +14,13 @@ export async function makeStableDiffusionRequest<TResponse, TRequest = object>(
   data: TRequest,
 ): Promise<TResponse> {
   return makeBaseRequest<TResponse, TRequest>(
-    config.stableDiffusionServers,
-    config.randomServer,
+    getConfig().stableDiffusionServers,
+    getConfig().randomServer,
     path,
     method,
     data,
     undefined,
-    config.requestTimeout,
+    getConfig().requestTimeout,
   );
 }
 
@@ -29,30 +28,40 @@ export async function getStableDiffusionModels(): Promise<StableDiffusionModel[]
   const allModels: StableDiffusionModel[] = [];
   const seenModels = new Set<string>();
 
-  await Promise.allSettled(
-    config.stableDiffusionServers.map(async (server) => {
+  const results = await Promise.allSettled(
+    getConfig().stableDiffusionServers.map(async (server) => {
       try {
         const url = new URL(server.url.toString());
         if (!url.pathname.endsWith("/")) url.pathname += "/";
         url.pathname += "sdapi/v1/sd-models";
 
-        const response = await axios.get<StableDiffusionModel[]>(url.toString(), {
-          timeout: 5000,
-        });
-
-        if (response.data && Array.isArray(response.data)) {
-          for (const model of response.data) {
-            if (!seenModels.has(model.model_name)) {
-              seenModels.add(model.model_name);
-              allModels.push(model);
-            }
-          }
-        }
-      } catch (error) {
-        log.log(LogLevel.Debug, `Failed to fetch models from SD server ${server.url}`);
+        const response = await axios.get<StableDiffusionModel[]>(
+          url.toString(),
+          {
+            timeout: 5000,
+          },
+        );
+        return response.data;
+      } catch (_error) {
+        log.log(
+          LogLevel.Debug,
+          `Failed to fetch models from SD server ${server.url}`,
+        );
+        return null;
       }
-    })
+    }),
   );
+
+  for (const result of results) {
+    if (result.status === "fulfilled" && Array.isArray(result.value)) {
+      for (const model of result.value) {
+        if (!seenModels.has(model.model_name)) {
+          seenModels.add(model.model_name);
+          allModels.push(model);
+        }
+      }
+    }
+  }
 
   return allModels;
 }

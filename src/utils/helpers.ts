@@ -29,7 +29,7 @@ export function splitText(str: string, length: number): string[] {
   while ((word = str.match(/^[^\s]*(?:\s+|$)/)) != null) {
     suffix = "";
     const wordStr = word[0];
-    if (wordStr.length == 0) break;
+    if (wordStr.length === 0) break;
     if (segment.length + wordStr.length > length) {
       if (segment.includes("\n")) {
         const beforeParagraph = segment.match(/^.*\n/s);
@@ -69,10 +69,10 @@ export function getBoolean(str: string | undefined): boolean {
   const normalized = str.trim().toLowerCase();
   return (
     normalized !== "" &&
-    normalized != "false" &&
-    normalized != "no" &&
-    normalized != "off" &&
-    normalized != "0"
+    normalized !== "false" &&
+    normalized !== "no" &&
+    normalized !== "off" &&
+    normalized !== "0"
   );
 }
 
@@ -88,15 +88,6 @@ export function parseTimeout(
   return parsed;
 }
 
-export function stripLeadingMention(
-  content: string,
-  mentionPattern: RegExp,
-): string {
-  // Allow commands like "   @Bot .help" by ignoring whitespace before the leading mention.
-  return content
-    .replace(new RegExp(`^\\s*(?:${mentionPattern.source})`), "")
-    .trim();
-}
 
 function unescapeMessageLine(line: string): string {
   let result = "";
@@ -108,7 +99,7 @@ function unescapeMessageLine(line: string): string {
     }
 
     const nextChar = line[++i];
-    if (nextChar == null) {
+    if (nextChar === undefined) {
       result += "\\";
       break;
     }
@@ -157,23 +148,6 @@ function unescapeMessageLine(line: string): string {
   return result;
 }
 
-export function parseJSONLines<T>(str: string, sourceName = "response"): T[] {
-  const result: T[] = [];
-
-  for (const [index, line] of str.split(/\r?\n/g).entries()) {
-    if (line.trim().length === 0) continue;
-
-    try {
-      result.push(JSON.parse(line) as T);
-    } catch (error) {
-      throw new Error(`Invalid ${sourceName} JSON on line ${index + 1}`, {
-        cause: error,
-      });
-    }
-  }
-
-  return result;
-}
 
 export function parseJSONMessage(str: string): string {
   return str
@@ -188,24 +162,6 @@ export function parseEnvString(str: string | undefined): string | null {
     : null;
 }
 
-export async function replySplitMessage(
-  replyMessage: Message,
-  content: string,
-): Promise<Message[]> {
-  const responseMessages = splitText(content, 2000).map((text) => ({
-    content: text,
-  }));
-
-  const replyMessages: Message[] = [];
-  for (let i = 0; i < responseMessages.length; ++i) {
-    if (i == 0) {
-      replyMessages.push(await replyMessage.reply(responseMessages[i]));
-    } else if ("send" in replyMessage.channel) {
-      replyMessages.push(await replyMessage.channel.send(responseMessages[i]));
-    }
-  }
-  return replyMessages;
-}
 
 export function downloadAttachment(
   url: string,
