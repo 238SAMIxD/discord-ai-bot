@@ -21,6 +21,9 @@ const event: Event<Events.ClientReady> = {
       );
     }
     client.user!.setPresence({ activities: [], status: "online" });
+
+    log.log(LogLevel.Info, `Bot is ready! Logged in as ${client.user!.tag}`);
+
     try {
       await rest.put(Routes.applicationCommands(client.user!.id), {
         body: commands.map((c) => c.data),
