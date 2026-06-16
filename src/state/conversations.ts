@@ -5,5 +5,5 @@ export const messages: Record<string, ChannelMessages> = {};
 export let modelInfo: OllamaShowResponse | null = null;
 
 export function setModelInfo(info: OllamaShowResponse) {
-	modelInfo = info;
+  modelInfo = info;
 }
