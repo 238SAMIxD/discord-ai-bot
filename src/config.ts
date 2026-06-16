@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import { getBoolean, parseEnvString } from "./utils/helpers.js";
+import { getBoolean, parseEnvString, parseTimeout } from "./utils/helpers.js";
 import type { Server } from "./types.js";
 
 dotenv.config();
@@ -41,7 +41,8 @@ export const config = {
 	randomServer: getBoolean(process.env.RANDOM_SERVER),
 	initialPrompt,
 	useInitialPrompt: getBoolean(process.env.USE_INITIAL_PROMPT) && !!initialPrompt,
-	requiresMention: getBoolean(process.env.REQUIRES_MENTION)
+	requiresMention: getBoolean(process.env.REQUIRES_MENTION),
+	requestTimeout: parseTimeout(process.env.REQUEST_TIMEOUT, 0)
 };
 
 if (config.servers.length === 0) {

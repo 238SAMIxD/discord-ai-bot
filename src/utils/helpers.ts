@@ -64,6 +64,15 @@ export function getBoolean(str: string | undefined): boolean {
 	return normalized !== "" && normalized != "false" && normalized != "no" && normalized != "off" && normalized != "0";
 }
 
+export function parseTimeout(str: string | undefined, fallback: number): number {
+	if (str == null || str.trim().length === 0) return fallback;
+	const parsed = Number(str);
+	if (!Number.isFinite(parsed) || parsed < 0) {
+		throw new Error(`Invalid timeout value: ${str}`);
+	}
+	return parsed;
+}
+
 export function stripLeadingMention(content: string, mentionPattern: RegExp): string {
 	// Allow commands like "   @Bot .help" by ignoring whitespace before the leading mention.
 	return content.replace(new RegExp(`^\\s*(?:${mentionPattern.source})`), "").trim();

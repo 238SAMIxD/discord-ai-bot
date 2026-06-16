@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseJSONLines, parseJSONMessage, stripLeadingMention } from "./helpers.js";
+import { parseJSONLines, parseJSONMessage, parseTimeout, stripLeadingMention } from "./helpers.js";
 
 test("stripLeadingMention removes a leading mention after whitespace", () => {
 	const mentionPattern = new RegExp("<@((!?123)|(&456))>", "g");
@@ -39,4 +39,15 @@ test("parseJSONLines parses newline-delimited JSON and reports malformed lines",
 		() => parseJSONLines("{\"response\":\"ok\"}\n{\"response\":", "test stream"),
 		(error: unknown) => error instanceof Error && error.message === "Invalid test stream JSON on line 2"
 	);
+});
+
+test("parseTimeout falls back when unset or blank, and validates numbers", () => {
+	assert.equal(parseTimeout(undefined, 0), 0);
+	assert.equal(parseTimeout("", 5000), 5000);
+	assert.equal(parseTimeout("   ", 5000), 5000);
+	assert.equal(parseTimeout("30000", 0), 30000);
+	assert.equal(parseTimeout("0", 5000), 0);
+
+	assert.throws(() => parseTimeout("-1", 0), /Invalid timeout value: -1/);
+	assert.throws(() => parseTimeout("abc", 0), /Invalid timeout value: abc/);
 });

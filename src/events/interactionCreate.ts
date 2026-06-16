@@ -1,4 +1,4 @@
-import { Events } from "discord.js";
+import { Events, MessageFlags } from "discord.js";
 import { makeStableDiffusionRequest } from "../api/stableDiffusion.js";
 import { logError } from "../utils/logger.js";
 import type { StableDiffusionResponse } from "../types.js";
@@ -54,7 +54,7 @@ const event: Event<Events.InteractionCreate> = {
 					} else {
 						await interaction.reply({
 							content: "Error, please check the console",
-							ephemeral: true
+							flags: MessageFlags.Ephemeral
 						});
 					}
 				}

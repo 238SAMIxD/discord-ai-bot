@@ -5,7 +5,6 @@ import { shuffleArray } from "../utils/helpers.js";
 import type { Server } from "../types.js";
 
 const SERVER_WAIT_TIMEOUT_MS = 10_000;
-const REQUEST_TIMEOUT_MS = 30_000;
 
 export async function makeBaseRequest<T = unknown>(
 	servers: Server[],
@@ -13,7 +12,8 @@ export async function makeBaseRequest<T = unknown>(
 	path: string,
 	method: string,
 	data: Record<string, unknown>,
-	responseType?: "arraybuffer" | "blob" | "document" | "json" | "text" | "stream"
+	responseType?: "arraybuffer" | "blob" | "document" | "json" | "text" | "stream",
+	timeoutMs = 0
 ): Promise<T> {
 	if (servers.length == 0) {
 		throw new Error("No servers available");
@@ -49,7 +49,7 @@ export async function makeBaseRequest<T = unknown>(
 			const result = await axios({
 				method, url: url.toString(), data,
 				responseType,
-				timeout: REQUEST_TIMEOUT_MS
+				timeout: timeoutMs
 			});
 			return result.data as T;
 		} catch (err) {

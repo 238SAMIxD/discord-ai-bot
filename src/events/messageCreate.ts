@@ -27,7 +27,7 @@ const event: Event<Events.MessageCreate> = {
 		if (message.author.bot || message.author.id == message.client.user!.id) return;
 
 		const botRole = message.guild?.members?.me?.roles?.botRole;
-		const myMention = new RegExp(`<@((!?${message.client.user!.id}${botRole ? `)|(&${botRole.id}` : ""})})>`, "g");
+		const myMention = new RegExp(`<@((!?${message.client.user!.id}${botRole ? `)|(&${botRole.id}` : ""}))>`, "g");
 
 		if (typeof message.content !== "string" || message.content.length == 0) {
 			return;
