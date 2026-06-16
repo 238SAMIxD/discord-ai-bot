@@ -85,7 +85,6 @@ export enum LogLevel {
 
 /**
  * Simple logger that supports production/debug modes and named contexts.
- * Replaces the unpublished `meklog` npm package with an equivalent local implementation.
  *
  * The instance is callable via the `log()` method.
  */
