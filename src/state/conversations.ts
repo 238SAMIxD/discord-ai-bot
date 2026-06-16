@@ -5,9 +5,9 @@ export interface ChatHistoryMessage {
   content: string;
 }
 
-export const messages: Record<string, ChannelMessages> = {};
+export const messages: { [channelId: string]: ChannelMessages } = {};
 
-export const chatHistory: Record<string, ChatHistoryMessage[]> = {};
+export const chatHistory: { [channelId: string]: ChatHistoryMessage[] } = {};
 
 export let modelInfo: OllamaShowResponse | null = null;
 

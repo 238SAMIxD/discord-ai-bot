@@ -8,11 +8,13 @@ export interface Event<K extends keyof ClientEvents = keyof ClientEvents> {
   execute: (...args: ClientEvents[K]) => Promise<void> | void;
 }
 
-const events = [ready, interactionCreate];
+const events: Event<keyof ClientEvents>[] = [
+  ready as Event<keyof ClientEvents>, 
+  interactionCreate as Event<keyof ClientEvents>
+];
 
 export function registerEvents(client: Client) {
-  for (const e of events) {
-    const event = e as unknown as Event<keyof ClientEvents>;
+  for (const event of events) {
     if (event.once) {
       client.once(event.name, (...args) => event.execute(...args));
     } else {

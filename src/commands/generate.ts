@@ -2,6 +2,7 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   AutocompleteInteraction,
+  Message,
 } from "discord.js";
 import { makeRequest, getModels } from "../api/ollama.js";
 import { log, logError } from "../utils/logger.js";
@@ -12,7 +13,7 @@ import {
 } from "../utils/helpers.js";
 import { extractTextFromPDF } from "../utils/pdf.js";
 import { config } from "../config.js";
-import { LogLevel, BotCommand, OllamaShowResponse } from "../types.js";
+import { LogLevel, BotCommand, OllamaShowResponse, OllamaGenerateResponse, OllamaShowRequest, OllamaGenerateRequest } from "../types.js";
 
 const data = new SlashCommandBuilder()
   .setName("generate")
@@ -150,7 +151,7 @@ const generate: BotCommand = {
       const systemMessages: string[] = [];
       if (config.useModelSystemMessage) {
         try {
-          const info = await makeRequest<OllamaShowResponse>(
+          const info = await makeRequest<OllamaShowResponse, OllamaShowRequest>(
             "/api/show",
             "post",
             { name: model },
@@ -170,7 +171,7 @@ const generate: BotCommand = {
 
       const systemMessage = systemMessages.join("\n\n");
 
-      const payload: Record<string, unknown> = {
+      const payload: OllamaGenerateRequest = {
         model,
         prompt: finalPrompt,
         stream,
@@ -184,7 +185,7 @@ const generate: BotCommand = {
       }
 
       if (!stream) {
-        const response = await makeRequest<any>(
+        const response = await makeRequest<OllamaGenerateResponse, OllamaGenerateRequest>(
           "/api/generate",
           "post",
           payload,
@@ -194,7 +195,7 @@ const generate: BotCommand = {
 
         await replySplitInteraction(interaction, responseText, true);
       } else {
-        const responseStream = await makeRequest<any>(
+        const responseStream = await makeRequest<NodeJS.ReadableStream, OllamaGenerateRequest>(
           "/api/generate",
           "post",
           payload,
@@ -205,7 +206,7 @@ const generate: BotCommand = {
           fullResponse: "",
           buffer: "",
           lastEditTime: Date.now(),
-          editPromise: Promise.resolve<unknown>(),
+          editPromise: Promise.resolve() as Promise<Message | void>,
         };
 
         const updateMessage = async (force = false) => {
@@ -234,7 +235,7 @@ const generate: BotCommand = {
             const trimmedLine = line.trim();
             if (trimmedLine.length === 0) continue;
             try {
-              const parsedData = JSON.parse(trimmedLine) as any;
+              const parsedData = JSON.parse(trimmedLine) as OllamaGenerateResponse;
               const text = parsedData.response || "";
               streamState.fullResponse += text;
             } catch {
@@ -247,7 +248,7 @@ const generate: BotCommand = {
         responseStream.on("end", async () => {
           if (streamState.buffer.trim().length > 0) {
             try {
-              const parsedData = JSON.parse(streamState.buffer.trim()) as any;
+              const parsedData = JSON.parse(streamState.buffer.trim()) as OllamaGenerateResponse;
               const text = parsedData.response || "";
               streamState.fullResponse += text;
             } catch {
@@ -273,7 +274,7 @@ const generate: BotCommand = {
           }
         });
 
-        responseStream.on("error", (err: unknown) => {
+        responseStream.on("error", (err: Error) => {
           logError(err);
           void interaction.editReply({
             content: "Error occurred while streaming response.",

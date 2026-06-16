@@ -6,6 +6,8 @@ import type {
   AutocompleteInteraction,
 } from "discord.js";
 
+
+
 /**
  * Server instance for Ollama or Stable Diffusion endpoints.
  */
@@ -21,6 +23,13 @@ export interface ChannelMessages {
   amount: number;
   last: number[] | null;
   [messageId: string]: number[] | number | null;
+}
+
+/**
+ * Request payload for the Ollama `/api/show` endpoint.
+ */
+export interface OllamaShowRequest {
+  name: string;
 }
 
 /**
@@ -41,9 +50,20 @@ export interface OllamaShowResponse {
 }
 
 /**
+ * Request payload for the Ollama `/api/generate` endpoint.
+ */
+export interface OllamaGenerateRequest {
+  model: string;
+  prompt: string;
+  stream?: boolean;
+  system?: string;
+  images?: string[];
+}
+
+/**
  * Individual chunk from the Ollama `/api/generate` streaming response.
  */
-export interface OllamaGenerateChunk {
+export interface OllamaGenerateResponse {
   model: string;
   created_at: string;
   response: string;
@@ -58,11 +78,61 @@ export interface OllamaGenerateChunk {
 }
 
 /**
+ * Request payload for the Ollama `/api/chat` endpoint.
+ */
+export interface OllamaChatRequest {
+  model: string;
+  messages: { role: string; content: string }[];
+  stream?: boolean;
+}
+
+/**
+ * Individual chunk from the Ollama `/api/chat` streaming response.
+ */
+export interface OllamaChatResponse {
+  model: string;
+  created_at: string;
+  message: {
+    role: string;
+    content: string;
+  };
+  done: boolean;
+  total_duration?: number;
+  load_duration?: number;
+  prompt_eval_count?: number;
+  prompt_eval_duration?: number;
+  eval_count?: number;
+  eval_duration?: number;
+}
+
+export type OllamaResponse = OllamaGenerateResponse | OllamaChatResponse;
+
+/**
+ * Request payload for the Stable Diffusion `/sdapi/v1/txt2img` endpoint.
+ */
+export interface SDTxt2ImgRequest {
+  prompt: string;
+  negative_prompt?: string;
+  steps?: number;
+  num_inference_steps?: number;
+  width?: number;
+  height?: number;
+  cfg_scale?: number;
+  sampler_name?: string;
+  enable_hr?: boolean;
+  hr_scale?: number;
+  hr_upscaler?: string;
+  batch_count?: number;
+  batch_size?: number;
+  enhance_prompt?: string;
+}
+
+/**
  * Response from the Stable Diffusion `/sdapi/v1/txt2img` endpoint.
  */
-export interface StableDiffusionResponse {
+export interface SDResponse {
   images: string[];
-  parameters?: Record<string, unknown>;
+  parameters?: SDTxt2ImgRequest;
   info?: string;
 }
 
@@ -119,7 +189,7 @@ export class Logger {
    * Log a message at the given severity level.
    * Debug messages are suppressed in production mode.
    */
-  log(level: LogLevel, ...args: unknown[]): void {
+  log<T>(level: LogLevel, ...args: T[]): void {
     if (level === LogLevel.Debug && this.production) return;
 
     const timestamp = new Date().toISOString();

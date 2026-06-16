@@ -2,12 +2,13 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   AutocompleteInteraction,
+  Message,
 } from "discord.js";
 import { makeRequest, getModels } from "../api/ollama.js";
 import { log, logError } from "../utils/logger.js";
 import { replySplitInteraction, splitText } from "../utils/helpers.js";
 import { config } from "../config.js";
-import { LogLevel, BotCommand, OllamaShowResponse } from "../types.js";
+import { LogLevel, BotCommand, OllamaShowResponse, OllamaChatResponse, OllamaShowRequest, OllamaChatRequest } from "../types.js";
 import { chatHistory } from "../state/conversations.js";
 
 const data = new SlashCommandBuilder()
@@ -64,7 +65,7 @@ const chat: BotCommand = {
       const systemMessages: string[] = [];
       if (config.useModelSystemMessage) {
         try {
-          const info = await makeRequest<OllamaShowResponse>(
+          const info = await makeRequest<OllamaShowResponse, OllamaShowRequest>(
             "/api/show",
             "post",
             { name: model },
@@ -96,14 +97,14 @@ const chat: BotCommand = {
       messagesToSend.push(...chatHistory[channelID]);
       messagesToSend.push({ role: "user", content: prompt });
 
-      const payload = {
+      const payload: OllamaChatRequest = {
         model,
         messages: messagesToSend,
         stream,
       };
 
       if (!stream) {
-        const response = await makeRequest<any>(
+        const response = await makeRequest<OllamaChatResponse, OllamaChatRequest>(
           "/api/chat",
           "post",
           payload,
@@ -120,7 +121,7 @@ const chat: BotCommand = {
 
         await replySplitInteraction(interaction, responseText, true);
       } else {
-        const responseStream = await makeRequest<any>(
+        const responseStream = await makeRequest<NodeJS.ReadableStream, OllamaChatRequest>(
           "/api/chat",
           "post",
           payload,
@@ -131,7 +132,7 @@ const chat: BotCommand = {
           fullResponse: "",
           buffer: "",
           lastEditTime: Date.now(),
-          editPromise: Promise.resolve<unknown>(),
+          editPromise: Promise.resolve() as Promise<Message | void>,
         };
 
         const updateMessage = async (force = false) => {
@@ -160,7 +161,7 @@ const chat: BotCommand = {
             const trimmedLine = line.trim();
             if (trimmedLine.length === 0) continue;
             try {
-              const parsedData = JSON.parse(trimmedLine) as any;
+              const parsedData = JSON.parse(trimmedLine) as OllamaChatResponse;
               const text = parsedData.message?.content || "";
               streamState.fullResponse += text;
             } catch {
@@ -174,7 +175,7 @@ const chat: BotCommand = {
           // Parse any final remaining string in the buffer
           if (streamState.buffer.trim().length > 0) {
             try {
-              const parsedData = JSON.parse(streamState.buffer.trim()) as any;
+              const parsedData = JSON.parse(streamState.buffer.trim()) as OllamaChatResponse;
               const text = parsedData.message?.content || "";
               streamState.fullResponse += text;
             } catch {
@@ -207,7 +208,7 @@ const chat: BotCommand = {
           }
         });
 
-        responseStream.on("error", (err: unknown) => {
+        responseStream.on("error", (err: Error) => {
           logError(err);
           void interaction.editReply({
             content: "Error occurred while streaming response.",

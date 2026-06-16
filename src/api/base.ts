@@ -6,12 +6,12 @@ import type { Server } from "../types.js";
 
 const SERVER_WAIT_TIMEOUT_MS = 10_000;
 
-export async function makeBaseRequest<T = unknown>(
+export async function makeBaseRequest<TResponse, TRequest = object>(
   servers: Server[],
   randomServer: boolean,
   path: string,
   method: string,
-  data: Record<string, unknown>,
+  data: TRequest,
   responseType?:
     | "arraybuffer"
     | "blob"
@@ -20,7 +20,7 @@ export async function makeBaseRequest<T = unknown>(
     | "text"
     | "stream",
   timeoutMs = 0,
-): Promise<T> {
+): Promise<TResponse> {
   if (servers.length == 0) {
     throw new Error("No servers available");
   }
@@ -64,7 +64,7 @@ export async function makeBaseRequest<T = unknown>(
         responseType,
         timeout: timeoutMs,
       });
-      return result.data as T;
+      return result.data as TResponse;
     } catch (err) {
       error = err as Error;
       logError(error);

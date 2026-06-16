@@ -4,15 +4,10 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { getModels } from "../api/ollama.js";
-import { makeStableDiffusionRequest } from "../api/stableDiffusion.js";
+import { getStableDiffusionModels } from "../api/stableDiffusion.js";
 import { logError } from "../utils/logger.js";
 import { config } from "../config.js";
 import { BotCommand } from "../types.js";
-
-interface StableDiffusionModel {
-  title: string;
-  model_name: string;
-}
 
 const data = new SlashCommandBuilder()
   .setName("models")
@@ -66,9 +61,7 @@ const models: BotCommand = {
           return;
         }
 
-        const sdModels = await makeStableDiffusionRequest<
-          StableDiffusionModel[]
-        >("/sdapi/v1/sd-models", "get", {});
+        const sdModels = await getStableDiffusionModels();
 
         if (!sdModels || sdModels.length === 0) {
           await interaction.editReply({

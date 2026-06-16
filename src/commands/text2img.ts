@@ -5,7 +5,7 @@ import {
 } from "discord.js";
 import { makeStableDiffusionRequest } from "../api/stableDiffusion.js";
 import { logError } from "../utils/logger.js";
-import { BotCommand, StableDiffusionResponse } from "../types.js";
+import { BotCommand, SDResponse, SDTxt2ImgRequest } from "../types.js";
 
 const data = new SlashCommandBuilder()
   .setName("text2img")
@@ -78,20 +78,22 @@ const text2img: BotCommand = {
         ? "yes"
         : "no";
 
+      const payload: SDTxt2ImgRequest = {
+        prompt,
+        width,
+        height,
+        steps,
+        num_inference_steps: steps,
+        batch_count,
+        batch_size,
+        enhance_prompt,
+      };
+
       const stableDiffusionResponse =
-        await makeStableDiffusionRequest<StableDiffusionResponse>(
+        await makeStableDiffusionRequest<SDResponse, SDTxt2ImgRequest>(
           "/sdapi/v1/txt2img",
           "post",
-          {
-            prompt,
-            width,
-            height,
-            steps,
-            num_inference_steps: steps,
-            batch_count,
-            batch_size,
-            enhance_prompt,
-          },
+          payload,
         );
       const images = (stableDiffusionResponse.images ?? []).map((image) =>
         Buffer.from(image, "base64"),

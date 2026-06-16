@@ -57,7 +57,7 @@ test("parseJSONLines parses newline-delimited JSON and reports malformed lines",
 
   assert.throws(
     () => parseJSONLines('{"response":"ok"}\n{"response":', "test stream"),
-    (error: unknown) =>
+    (error: Error) =>
       error instanceof Error &&
       error.message === "Invalid test stream JSON on line 2",
   );

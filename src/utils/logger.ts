@@ -8,7 +8,7 @@ function getInitialLoggerName(): string {
   }
 
   try {
-    const parsed = JSON.parse(shardEnv) as number | string | unknown[];
+    const parsed = JSON.parse(shardEnv) as number | string | (number | string)[];
     if (Array.isArray(parsed) && parsed.length === 1) {
       return `Shard #${String(parsed[0])}`;
     }
@@ -28,12 +28,12 @@ export function setLogger(newLog: Logger) {
   log = newLog;
 }
 
-export const logError = (error: unknown): void => {
+export const logError = <E>(error: E): void => {
   if (error instanceof AxiosError && error.response) {
     const method = String(error.config?.method ?? "UNKNOWN").toUpperCase();
     const url = String(error.config?.url ?? "");
     let str = `Error ${error.response.status} ${error.response.statusText}: ${method} ${url}`;
-    const data = error.response.data as Record<string, unknown> | undefined;
+    const data = error.response.data as { error?: string } | undefined;
     if (data?.error) {
       str += ": " + String(data.error);
     }
