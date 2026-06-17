@@ -6,6 +6,8 @@ import { log, logError, LogLevel } from "../utils/logger.js";
 
 import type { Server } from "../types.js";
 
+export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
+
 const SERVER_WAIT_TIMEOUT_MS = 60_000;
 const serverEmitter = new EventEmitter();
 
@@ -13,7 +15,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
   servers: Server[],
   randomServer: boolean,
   path: string,
-  method: string,
+  method: HttpMethod,
   data: TRequest,
   responseType?:
     | "arraybuffer"
@@ -67,8 +69,8 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
   }
 
   let error: Error | null = null;
-  let order: number[] = new Array(servers.length).fill(0).map((_, i) => i);
-  if (randomServer) order = shuffleArray(order);
+  const order: number[] = new Array(servers.length).fill(0).map((_, i) => i);
+  if (randomServer) shuffleArray(order);
 
   for (const i of order) {
     if (!servers[i].available) continue;

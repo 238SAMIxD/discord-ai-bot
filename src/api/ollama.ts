@@ -1,6 +1,6 @@
 import axios from "axios";
 import { getConfig } from "../config.js";
-import { makeBaseRequest } from "./base.js";
+import { makeBaseRequest, type HttpMethod } from "./base.js";
 import { log, LogLevel } from "../utils/logger.js";
 
 export interface OllamaModelInfo {
@@ -14,7 +14,7 @@ export interface OllamaTagsResponse {
 
 export async function makeRequest<TResponse, TRequest = object>(
   path: string,
-  method: string,
+  method: HttpMethod,
   data: TRequest,
   responseType:
     | "arraybuffer"
@@ -50,7 +50,7 @@ export async function getModels(): Promise<OllamaModelInfo[]> {
           timeout: 5000,
         });
         return response.data;
-      } catch (_error) {
+      } catch {
         log.log(
           LogLevel.Debug,
           `Failed to fetch models from Ollama server ${server.url}`,

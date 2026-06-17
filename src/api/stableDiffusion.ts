@@ -1,6 +1,6 @@
 import axios from "axios";
 import { getConfig } from "../config.js";
-import { makeBaseRequest } from "./base.js";
+import { makeBaseRequest, type HttpMethod } from "./base.js";
 import { log, LogLevel } from "../utils/logger.js";
 
 export interface StableDiffusionModel {
@@ -10,7 +10,7 @@ export interface StableDiffusionModel {
 
 export async function makeStableDiffusionRequest<TResponse, TRequest = object>(
   path: string,
-  method: string,
+  method: HttpMethod,
   data: TRequest,
 ): Promise<TResponse> {
   return makeBaseRequest<TResponse, TRequest>(
@@ -42,7 +42,7 @@ export async function getStableDiffusionModels(): Promise<StableDiffusionModel[]
           },
         );
         return response.data;
-      } catch (_error) {
+      } catch {
         log.log(
           LogLevel.Debug,
           `Failed to fetch models from SD server ${server.url}`,
