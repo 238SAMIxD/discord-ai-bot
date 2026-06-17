@@ -93,7 +93,7 @@ const text2img: BotCommand = {
           "post",
           payload,
         );
-      const images = (stableDiffusionResponse.images ?? []).map((image) =>
+      const images = (stableDiffusionResponse?.images ?? []).map((image) =>
         Buffer.from(image, "base64"),
       );
       await interaction.editReply({

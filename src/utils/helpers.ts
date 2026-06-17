@@ -181,6 +181,10 @@ export async function replySplitInteraction(
     content: text,
   }));
 
+  if (responseMessages.length === 0) {
+    responseMessages.push({ content: "(No response)" });
+  }
+
   const replyMessages: Message[] = [];
   if (defer) {
     const initialMessage = await interaction.editReply(responseMessages[0]);

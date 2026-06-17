@@ -1,4 +1,4 @@
-import EventEmitter from "events";
+import { EventEmitter } from "node:events";
 import axios from "axios";
 
 import { shuffleArray } from "../utils/helpers.js";

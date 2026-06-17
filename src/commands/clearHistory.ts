@@ -24,10 +24,7 @@ const clearHistory: BotCommand = {
       delete chatHistory[channelID];
 
       if (clearedGenerate > 0 || clearedChat > 0) {
-        let text = "Cleared conversation history for this channel.";
-        if (clearedGenerate > 0 || clearedChat > 0) {
-            text = `Cleared conversation history (${clearedGenerate} generations, ${Math.floor(clearedChat / 2)} chats) for this channel.`;
-        }
+        const text = `Cleared conversation history (${clearedGenerate} generations, ${Math.floor(clearedChat / 2)} chats) for this channel.`;
         await interaction.editReply({
           content: text,
         });

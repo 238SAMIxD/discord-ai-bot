@@ -45,7 +45,7 @@ const models: BotCommand = {
             `Found ${modelsList.length} models on the Ollama server(s).`,
           )
           .addFields(
-            modelsList.map((m) => ({
+            modelsList.slice(0, 25).map((m) => ({
               name: m.name,
               value: `\`${m.model}\``,
               inline: true,

@@ -18,19 +18,33 @@ export function handleStreamResponse<T extends { message?: { content?: string };
     editPromise: Promise.resolve() as Promise<Message | void>,
   };
 
+  let isEditing = false;
+  let pendingEdit = false;
+
   const updateMessage = async (force = false) => {
+    if (isEditing) {
+      pendingEdit = true;
+      return;
+    }
     const now = Date.now();
     if (force || now - streamState.lastEditTime >= 1000) {
       streamState.lastEditTime = now;
-      await streamState.editPromise;
-      const cleanText = streamState.fullResponse.trim();
-      if (cleanText.length === 0) return;
+      isEditing = true;
       try {
-        const segments = splitText(cleanText, 2000);
-        streamState.editPromise = interaction.editReply(segments[0]);
-        await streamState.editPromise;
+        const cleanText = streamState.fullResponse.trim();
+        if (cleanText.length > 0) {
+          const segments = splitText(cleanText, 2000);
+          streamState.editPromise = interaction.editReply(segments[0]);
+          await streamState.editPromise;
+        }
       } catch {
         // Ignore minor edit/rate limit errors during streaming
+      } finally {
+        isEditing = false;
+        if (pendingEdit) {
+          pendingEdit = false;
+          void updateMessage(true);
+        }
       }
     }
   };

@@ -17,6 +17,7 @@ const client = new Client({
 });
 
 process.on("message", (data: ShardMessage) => {
+  if (!data || typeof data !== "object") return;
   if (data.shardID !== undefined)
     client.shardID = data.shardID;
   if (data.logger) setLogger(new Logger(data.logger));
