@@ -11,7 +11,6 @@ export interface Config {
   customSystemMessage: string | null;
   useCustomSystemMessage: boolean;
   useModelSystemMessage: boolean;
-  randomServer: boolean;
   requestTimeout: number;
   maxAttachmentTextLength: number;
 }
@@ -70,7 +69,6 @@ export function getConfig(): Config {
     useCustomSystemMessage:
       getBoolean(process.env.USE_SYSTEM) && !!customSystemMessage,
     useModelSystemMessage: getBoolean(process.env.USE_MODEL_SYSTEM),
-    randomServer: getBoolean(process.env.RANDOM_SERVER),
     requestTimeout: parsePositiveInt(process.env.REQUEST_TIMEOUT, 0),
     maxAttachmentTextLength: parsePositiveInt(
       process.env.MAX_ATTACHMENT_TEXT_LENGTH,

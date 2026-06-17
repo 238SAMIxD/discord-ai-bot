@@ -1,7 +1,6 @@
 import { EventEmitter } from "node:events";
 import axios from "axios";
 
-import { shuffleArray } from "../utils/helpers.js";
 import { log, logError, LogLevel } from "../utils/logger.js";
 
 import type { Server } from "../types.js";
@@ -13,7 +12,6 @@ const serverEmitter = new EventEmitter();
 
 export async function makeBaseRequest<TResponse, TRequest = object>(
   servers: Server[],
-  randomServer: boolean,
   path: string,
   method: HttpMethod,
   data: TRequest,
@@ -69,10 +67,8 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
   }
 
   let error: Error | null = null;
-  const order: number[] = new Array(servers.length).fill(0).map((_, i) => i);
-  if (randomServer) shuffleArray(order);
 
-  for (const i of order) {
+  for (let i = 0; i < servers.length; i++) {
     if (!servers[i].available) continue;
 
     servers[i].available = false;

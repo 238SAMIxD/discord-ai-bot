@@ -26,7 +26,6 @@ export async function makeRequest<TResponse, TRequest = object>(
 ): Promise<TResponse> {
   return makeBaseRequest<TResponse, TRequest>(
     getConfig().servers,
-    getConfig().randomServer,
     path,
     method,
     data,

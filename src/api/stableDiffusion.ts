@@ -15,7 +15,6 @@ export async function makeStableDiffusionRequest<TResponse, TRequest = object>(
 ): Promise<TResponse> {
   return makeBaseRequest<TResponse, TRequest>(
     getConfig().stableDiffusionServers,
-    getConfig().randomServer,
     path,
     method,
     data,
