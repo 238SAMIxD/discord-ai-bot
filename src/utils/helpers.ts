@@ -3,11 +3,12 @@ import axios from "axios";
 import type { ResponseType } from "axios";
 
 export function shuffleArray<T>(array: T[]): T[] {
-  for (let i = array.length - 1; i > 0; i--) {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
+    [result[i], result[j]] = [result[j], result[i]];
   }
-  return array;
+  return result;
 }
 
 export function splitText(str: string, length: number): string[] {
@@ -76,14 +77,14 @@ export function getBoolean(str: string | undefined): boolean {
   );
 }
 
-export function parseTimeout(
+export function parsePositiveInt(
   str: string | undefined,
   fallback: number,
 ): number {
   if (str == null || str.trim().length === 0) return fallback;
   const parsed = Number(str);
   if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new Error(`Invalid timeout value: ${str}`);
+    throw new Error(`Invalid numeric value: ${str}`);
   }
   return parsed;
 }

@@ -16,7 +16,7 @@ declare module "discord.js" {
  * Server instance for Ollama or Stable Diffusion endpoints.
  */
 export interface Server {
-  url: URL;
+  url: string;
   available: boolean;
 }
 

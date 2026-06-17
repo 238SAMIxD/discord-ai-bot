@@ -42,7 +42,7 @@ export async function getModels(): Promise<OllamaModelInfo[]> {
   const results = await Promise.allSettled(
     getConfig().servers.map(async (server) => {
       try {
-        const url = new URL(server.url.toString());
+        const url = new URL(server.url);
         if (!url.pathname.endsWith("/")) url.pathname += "/";
         url.pathname += "api/tags";
 

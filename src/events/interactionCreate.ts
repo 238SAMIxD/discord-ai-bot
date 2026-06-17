@@ -9,11 +9,8 @@ const event: Event<Events.InteractionCreate> = {
   once: false,
   async execute(interaction) {
     const config = getConfig();
-    if (config.channels.length === 0) {
-      if (interaction.inGuild()) {
-        return;
-      }
-    } else if (!config.channels.includes(interaction.channelId ?? "")) {
+    // Only filter by channel if specific channels are configured
+    if (config.channels.length > 0 && !config.channels.includes(interaction.channelId ?? "")) {
       return;
     }
 

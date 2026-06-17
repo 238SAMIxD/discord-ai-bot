@@ -13,6 +13,7 @@ export interface LoggerData {
  */
 export enum LogLevel {
   Info = "info",
+  Warn = "warn",
   Debug = "debug",
   Error = "error",
 }
@@ -55,6 +56,9 @@ export class Logger {
       case LogLevel.Error:
         console.error(prefix, ...args);
         break;
+      case LogLevel.Warn:
+        console.warn(prefix, ...args);
+        break;
       case LogLevel.Debug:
         console.debug(prefix, ...args);
         break;
@@ -63,6 +67,22 @@ export class Logger {
         console.log(prefix, ...args);
         break;
     }
+  }
+
+  info<T>(...args: T[]): void {
+    this.log(LogLevel.Info, ...args);
+  }
+
+  warn<T>(...args: T[]): void {
+    this.log(LogLevel.Warn, ...args);
+  }
+
+  error<T>(...args: T[]): void {
+    this.log(LogLevel.Error, ...args);
+  }
+
+  debug<T>(...args: T[]): void {
+    this.log(LogLevel.Debug, ...args);
   }
 }
 

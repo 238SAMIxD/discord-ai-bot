@@ -31,7 +31,7 @@ export async function getStableDiffusionModels(): Promise<StableDiffusionModel[]
   const results = await Promise.allSettled(
     getConfig().stableDiffusionServers.map(async (server) => {
       try {
-        const url = new URL(server.url.toString());
+        const url = new URL(server.url);
         if (!url.pathname.endsWith("/")) url.pathname += "/";
         url.pathname += "sdapi/v1/sd-models";
 

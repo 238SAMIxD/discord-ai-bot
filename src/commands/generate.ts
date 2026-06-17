@@ -81,13 +81,18 @@ const generate: BotCommand = {
         if (att) attachments.push(att);
       }
 
+      const TEXT_EXTENSIONS = [
+        ".txt", ".json", ".js", ".ts", ".md", ".yaml", ".yml",
+        ".csv", ".xml", ".html", ".css", ".py", ".rb", ".go",
+        ".java", ".c", ".cpp", ".h", ".rs", ".sh", ".bat",
+        ".toml", ".ini", ".cfg", ".env", ".log", ".sql",
+      ];
       const textAttachments = attachments.filter(
         (att) =>
           att.contentType?.startsWith("text") ||
-          att.name.endsWith(".txt") ||
-          att.name.endsWith(".json") ||
-          att.name.endsWith(".js") ||
-          att.name.endsWith(".ts"),
+          att.contentType === "application/json" ||
+          att.contentType === "application/xml" ||
+          TEXT_EXTENSIONS.some((ext) => att.name.toLowerCase().endsWith(ext)),
       );
 
       const pdfAttachments = attachments.filter(

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   parseJSONMessage,
-  parseTimeout,
+  parsePositiveInt,
 } from "./helpers.js";
 
 
@@ -28,13 +28,13 @@ test("parseJSONMessage preserves plain quotes while decoding JSON-style escape s
 
 
 
-test("parseTimeout falls back when unset or blank, and validates numbers", () => {
-  assert.equal(parseTimeout(undefined, 0), 0);
-  assert.equal(parseTimeout("", 5000), 5000);
-  assert.equal(parseTimeout("   ", 5000), 5000);
-  assert.equal(parseTimeout("30000", 0), 30000);
-  assert.equal(parseTimeout("0", 5000), 0);
+test("parsePositiveInt falls back when unset or blank, and validates numbers", () => {
+  assert.equal(parsePositiveInt(undefined, 0), 0);
+  assert.equal(parsePositiveInt("", 5000), 5000);
+  assert.equal(parsePositiveInt("   ", 5000), 5000);
+  assert.equal(parsePositiveInt("30000", 0), 30000);
+  assert.equal(parsePositiveInt("0", 5000), 0);
 
-  assert.throws(() => parseTimeout("-1", 0), /Invalid timeout value: -1/);
-  assert.throws(() => parseTimeout("abc", 0), /Invalid timeout value: abc/);
+  assert.throws(() => parsePositiveInt("-1", 0), /Invalid numeric value: -1/);
+  assert.throws(() => parsePositiveInt("abc", 0), /Invalid numeric value: abc/);
 });

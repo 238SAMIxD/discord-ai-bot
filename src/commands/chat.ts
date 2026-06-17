@@ -10,7 +10,7 @@ import { handleStreamResponse } from "../utils/stream.js";
 import { getConfig } from "../config.js";
 import { BotCommand, OllamaShowResponse, OllamaChatResponse, OllamaShowRequest, OllamaChatRequest } from "../types.js";
 import { LogLevel } from "../utils/logger.js";
-import { chatHistory } from "../state/conversations.js";
+import { getChatHistory, addChatMessage } from "../state/conversations.js";
 
 const data = new SlashCommandBuilder()
   .setName("chat")
@@ -94,8 +94,7 @@ const chat: BotCommand = {
         messagesToSend.push({ role: "system", content: systemMessage });
       }
 
-      chatHistory[channelID] = chatHistory[channelID] ?? [];
-      messagesToSend.push(...chatHistory[channelID]);
+      messagesToSend.push(...getChatHistory(channelID));
       messagesToSend.push({ role: "user", content: prompt });
 
       const payload: OllamaChatRequest = {
@@ -114,8 +113,8 @@ const chat: BotCommand = {
         const responseText =
           response?.message?.content || "(No response from Ollama)";
 
-        chatHistory[channelID].push({ role: "user", content: prompt });
-        chatHistory[channelID].push({
+        addChatMessage(channelID, { role: "user", content: prompt });
+        addChatMessage(channelID, {
           role: "assistant",
           content: responseText,
         });
@@ -133,8 +132,8 @@ const chat: BotCommand = {
           interaction,
           responseStream,
           (cleanText) => {
-            chatHistory[channelID].push({ role: "user", content: prompt });
-            chatHistory[channelID].push({
+            addChatMessage(channelID, { role: "user", content: prompt });
+            addChatMessage(channelID, {
               role: "assistant",
               content: cleanText,
             });

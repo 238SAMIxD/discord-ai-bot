@@ -77,7 +77,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
 
     servers[i].available = false;
     try {
-      const url = new URL(servers[i].url.toString());
+      const url = new URL(servers[i].url);
       if (!url.pathname.endsWith("/")) url.pathname += "/";
       url.pathname += normalizedPath;
 
