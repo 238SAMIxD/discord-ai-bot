@@ -32,7 +32,7 @@ Inside each hunk, every line starts with its line number in the new version of t
 
 ## Output
 
-Reply in GitHub-flavoured Markdown with these parts and nothing else:
+Reply in GitHub-flavoured Markdown with these parts, followed by the inline comments block described below, and nothing else:
 
 **Summary**: one or two sentences on what the change does and your overall assessment.
 
@@ -41,3 +41,16 @@ Reply in GitHub-flavoured Markdown with these parts and nothing else:
 **Notes**: optional, brief non-blocking observations such as missing tests. Leave this part out when there is nothing to add.
 
 Do not add headings, greetings or a sign-off.
+
+## Inline comments block
+
+End your reply with a fenced code block whose info string is `inline-comments`. It holds a JSON array with one object for each finding that points at a numbered line in the diff:
+
+```inline-comments
+[{"path": "src/commands/chat.ts", "line": 42, "severity": "medium", "title": "Short title", "body": "Markdown explanation and suggested fix."}]
+```
+
+- `path` is the file path exactly as it appears after `b/` in the diff header.
+- `line` is the new-file line number printed at the start of that diff line. Use only numbered lines.
+- Leave out findings that do not point at a numbered line, and write `[]` when no finding does.
+- The block is removed before the review is shown and its entries become comments on those lines, so keep every finding in the Findings list as well.
