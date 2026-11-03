@@ -128,6 +128,10 @@ function consume(stream: Readable): Promise<{ body: string; error?: Error }> {
   });
 }
 
+function wakeWaiters(fake: FakeOllama) {
+  return chat(toServers(fake));
+}
+
 function isPending(promise: Promise<unknown>, ms: number) {
   return Promise.race([promise.then(() => false), delay(ms, true)]);
 }
@@ -226,13 +230,16 @@ test("makeBaseRequest aborts a stream that goes idle and releases its server", a
   const stream = await openStream(servers, 100);
   const consumed = consume(stream);
   const upstreamClosed = a.streamClosed();
+  const stalledAt = Date.now();
 
   a.stallStreams();
   const { error } = await consumed;
+  const elapsed = Date.now() - stalledAt;
   await upstreamClosed;
 
   assert.ok(error);
   assert.match(error.message, /Stream idle/);
+  assert.ok(elapsed < 500);
   assert.equal(servers[0].available, true);
   assert.equal((await chat(servers)).message.content, "A");
 });
@@ -283,23 +290,57 @@ test("makeBaseRequest gives up once the wait timeout passes", async (t) => {
   const startedAt = Date.now();
 
   await assert.rejects(chat(servers, 100), /All servers busy/);
-  assert.ok(Date.now() - startedAt >= 100);
+  const elapsed = Date.now() - startedAt;
+  assert.ok(elapsed >= 100);
+  assert.ok(elapsed < 500);
 
   a.finishStreams();
   await consumed;
 });
 
 test(
-  "makeBaseRequest with a wait timeout of 0 waits until the server frees up",
+  "makeBaseRequest waits up to 60 seconds for a free server by default",
   { timeout: 5_000 },
   async (t) => {
     const a = await startFakeOllama(t, "A");
+    const b = await startFakeOllama(t, "B");
     const servers = toServers(a);
 
     const stream = await openStream(servers);
     const consumed = consume(stream);
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+    const reply = makeBaseRequest<ChatChunk>(servers, "/api/chat", "post", {
+      stream: false,
+    });
+
+    t.mock.timers.tick(59_000);
+    await wakeWaiters(b);
+    assert.equal(await isPending(reply, 50), true);
+
+    t.mock.timers.tick(1_000);
+    await wakeWaiters(b);
+    await assert.rejects(reply, /All servers busy/);
+
+    a.finishStreams();
+    await consumed;
+  },
+);
+
+test(
+  "makeBaseRequest with a wait timeout of 0 waits until the server frees up",
+  { timeout: 5_000 },
+  async (t) => {
+    const a = await startFakeOllama(t, "A");
+    const b = await startFakeOllama(t, "B");
+    const servers = toServers(a);
+
+    const stream = await openStream(servers);
+    const consumed = consume(stream);
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
     const reply = chat(servers, 0);
 
+    t.mock.timers.tick(30 * 24 * 60 * 60 * 1_000);
+    await wakeWaiters(b);
     assert.equal(await isPending(reply, 300), true);
 
     a.finishStreams();

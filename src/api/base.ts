@@ -57,7 +57,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
     | "text"
     | "stream",
   timeoutMs = 0,
-  waitTimeoutMs = 0,
+  waitTimeoutMs = 60_000,
   streamIdleTimeoutMs = 0,
 ): Promise<TResponse> {
   if (servers.length === 0) {
