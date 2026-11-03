@@ -20,6 +20,7 @@ export async function makeStableDiffusionRequest<TResponse, TRequest = object>(
     data,
     undefined,
     getConfig().requestTimeout,
+    getConfig().serverWaitTimeout,
   );
 }
 

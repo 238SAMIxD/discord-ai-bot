@@ -33,6 +33,8 @@ export async function makeRequest<TResponse, TRequest = object>(
     data,
     responseType,
     getConfig().requestTimeout,
+    getConfig().serverWaitTimeout,
+    getConfig().streamIdleTimeout,
   );
 }
 
