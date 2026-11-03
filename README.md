@@ -8,6 +8,7 @@
 
 1. Install [Node.js](https://nodejs.org) (if you have a package manager, use that instead to install this)
    - Make sure to install at least v22 of Node.js
+   - Install [pnpm](https://pnpm.io/installation) v12 or newer, it switches to the version pinned in `package.json` automatically
 2. Install [Ollama](https://github.com/jmorganca/ollama) (ditto)
 3. Pull (download) a model, e.g `ollama pull orca` or `ollama pull llama2`
 4. Start Ollama by running `ollama serve`
@@ -25,7 +26,7 @@
    - Make sure to change the model if you aren't using `orca`
    - Ollama URL can be kept the same unless you have changed the port
    - You can use multiple Ollama servers at the same time by separating the URLs with commas
-   - Set the channels to the channel ID, comma separated
+   - Set the channels to the channel IDs, comma separated, or leave it empty to allow all channels (threads inside a listed channel are allowed too, and DMs are always allowed)
      1. In Discord, go to User Settings » Advanced, and enable Developer Mode
      2. Right click on a channel you want to use, and click Copy Channel ID
    - You can edit the system message the bot uses, or disable it entirely

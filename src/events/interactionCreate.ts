@@ -2,21 +2,12 @@ import { Events, MessageFlags } from "discord.js";
 import { logError } from "../utils/logger.js";
 import type { Event } from "./index.js";
 import { getCommands } from "../commands/commands.js";
-import { getConfig } from "../config.js";
+import { isChannelAllowed } from "../utils/channels.js";
 
 const event: Event<Events.InteractionCreate> = {
   name: Events.InteractionCreate,
   once: false,
   async execute(interaction) {
-    const config = getConfig();
-    // Only filter by channel if specific channels are configured
-    if (
-      config.channels.length > 0 &&
-      !config.channels.includes(interaction.channelId ?? "")
-    ) {
-      return;
-    }
-
     if (interaction.isAutocomplete()) {
       const command = getCommands().find(
         (c) => c.data.name === interaction.commandName,
@@ -24,7 +15,9 @@ const event: Event<Events.InteractionCreate> = {
       if (!command) return;
 
       try {
-        if (command.autocomplete) {
+        if (!(await isChannelAllowed(interaction))) {
+          await interaction.respond([]);
+        } else if (command.autocomplete) {
           await command.autocomplete(interaction);
         }
       } catch (error) {
@@ -39,6 +32,18 @@ const event: Event<Events.InteractionCreate> = {
       (c) => c.data.name === interaction.commandName,
     );
     if (!command) return;
+
+    if (!(await isChannelAllowed(interaction))) {
+      try {
+        await interaction.reply({
+          content: "This bot isn't enabled in this channel.",
+          flags: MessageFlags.Ephemeral,
+        });
+      } catch (error) {
+        logError(error);
+      }
+      return;
+    }
 
     try {
       await command.execute(interaction);

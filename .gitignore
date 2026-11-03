@@ -1,6 +1,5 @@
 package-lock.json
 yarn.lock
-pnpm-workspace.yaml
 node_modules/
 .env
 .vscode/

@@ -23,7 +23,7 @@
   ],
   "author": "238SAMIxD",
   "license": "ISC",
-  "packageManager": "pnpm@10.33.0",
+  "packageManager": "pnpm@12.16.1",
   "engines": {
     "node": ">=22"
   },
@@ -36,7 +36,7 @@
   "devDependencies": {
     "@eslint/js": "^9.20.0",
     "@types/eslint__js": "^8.42.3",
-    "@types/node": "^20.11.24",
+    "@types/node": "^24.19.2",
     "@types/pdf-parse": "^1.1.1",
     "eslint": "^9.20.1",
     "eslint-config-prettier": "^10.0.1",
