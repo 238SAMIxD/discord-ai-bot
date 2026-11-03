@@ -1,4 +1,4 @@
-FROM node:24-slim AS build
+FROM node:26-slim AS build
 
 WORKDIR /app
 
@@ -10,7 +10,7 @@ COPY . .
 RUN pnpm run build
 RUN pnpm prune --prod
 
-FROM node:24-slim AS runtime
+FROM node:26-slim AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app
