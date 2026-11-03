@@ -1,0 +1,78 @@
+name: ai-review
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  review:
+    if: github.event.issue.pull_request && contains(github.event.comment.body, '/review')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: ai-review-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.issue.number }}
+      COMMENT_ID: ${{ github.event.comment.id }}
+    steps:
+      - name: Authorize commenter
+        id: auth
+        env:
+          COMMENTER: ${{ github.event.comment.user.login }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          trimmed="${COMMENT_BODY#"${COMMENT_BODY%%[![:space:]]*}"}"
+          if [[ ! "$trimmed" =~ ^/review([[:space:]]|$) ]]; then
+            echo "The comment does not start with /review, so there is nothing to do."
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          permission=$(gh api "repos/$REPO/collaborators/$COMMENTER/permission" --jq .permission) || permission="none"
+          if [[ "$permission" != "admin" ]]; then
+            echo "$COMMENTER has $permission permission and /review is limited to repository admins."
+            gh api --method POST "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content=-1 > /dev/null || true
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "allowed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Acknowledge the command
+        if: steps.auth.outputs.allowed == 'true'
+        run: gh api --method POST "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content=eyes > /dev/null
+
+      - name: Check out the review script from the default branch
+        if: steps.auth.outputs.allowed == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Review the pull request diff
+        if: steps.auth.outputs.allowed == 'true'
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b:free' }}
+        run: bash .github/scripts/ai-review.sh
+
+      - name: Mark the command as done
+        if: success() && steps.auth.outputs.allowed == 'true'
+        run: gh api --method POST "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content=+1 > /dev/null
+
+      - name: Mark the command as failed
+        if: failure() && steps.auth.outputs.allowed == 'true'
+        run: gh api --method POST "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content=confused > /dev/null
