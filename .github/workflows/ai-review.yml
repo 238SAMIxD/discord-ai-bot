@@ -16,7 +16,10 @@ defaults:
 
 jobs:
   review:
-    if: github.event.issue.pull_request && contains(github.event.comment.body, '/review')
+    if: >-
+      github.event.issue.pull_request &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
+      contains(github.event.comment.body, '/review')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
@@ -40,7 +43,14 @@ jobs:
             echo "allowed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          permission=$(gh api "repos/$REPO/collaborators/$COMMENTER/permission" --jq .permission) || permission="none"
+          if ! permission=$(gh api "repos/$REPO/collaborators/$COMMENTER/permission" --jq .permission 2> "$RUNNER_TEMP/permission-error.txt"); then
+            if ! grep -qF "(HTTP 404)" "$RUNNER_TEMP/permission-error.txt"; then
+              cat "$RUNNER_TEMP/permission-error.txt" >&2
+              echo "::error::Could not read the repository permission of $COMMENTER."
+              exit 1
+            fi
+            permission="none"
+          fi
           if [[ "$permission" != "admin" ]]; then
             echo "$COMMENTER has $permission permission and /review is limited to repository admins."
             gh api --method POST "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content=-1 > /dev/null || true
@@ -74,5 +84,5 @@ jobs:
         run: gh api --method POST "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content=+1 > /dev/null
 
       - name: Mark the command as failed
-        if: failure() && steps.auth.outputs.allowed == 'true'
+        if: failure() && steps.auth.outputs.allowed != 'false'
         run: gh api --method POST "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content=confused > /dev/null
