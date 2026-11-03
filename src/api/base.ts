@@ -38,7 +38,9 @@ function holdServerUntilClosed(
 
   if (idleTimeoutMs > 0) {
     idleTimer = setTimeout(() => {
-      stream.destroy(new Error(`Stream idle: no data received for ${idleTimeoutMs}ms`));
+      stream.destroy(
+        new Error(`Stream idle: no data received for ${idleTimeoutMs}ms`),
+      );
     }, timerDelay(idleTimeoutMs));
   }
 
