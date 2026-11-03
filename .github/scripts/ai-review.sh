@@ -202,9 +202,9 @@ file_count=$(grep -c '' "$work/files.txt" || true)
 max_tokens=$max_output_tokens
 budget=$max_diff_chars
 context_tokens=""
-if curl -fsS --max-time 30 -o "$work/endpoints.json" "$api_url/models/$OPENROUTER_MODEL/endpoints"; then
-  context_tokens=$(jq -r '[.data.endpoints[]?.context_length | numbers] | max // empty' "$work/endpoints.json" || true)
-  completion_tokens=$(jq -r '[.data.endpoints[]?.max_completion_tokens | numbers] | max // empty' "$work/endpoints.json" || true)
+if curl -fsS --retry 2 --max-time 30 -o "$work/endpoints.json" "$api_url/models/$OPENROUTER_MODEL/endpoints"; then
+  context_tokens=$(jq -r '[.data.endpoints[]?.context_length | numbers] | min // empty' "$work/endpoints.json" || true)
+  completion_tokens=$(jq -r '[.data.endpoints[]?.max_completion_tokens | numbers] | min // empty' "$work/endpoints.json" || true)
   if [[ "$completion_tokens" =~ ^[0-9]+$ ]] && (( completion_tokens < max_tokens )); then
     max_tokens=$completion_tokens
   fi
@@ -216,7 +216,7 @@ if [[ "$context_tokens" =~ ^[0-9]+$ ]]; then
     max_tokens=$(( context_tokens / 4 ))
   fi
   overhead_chars=$(( $({ cat "$script_dir/ai-review-prompt.md" "$work/title.txt" "$work/description.txt" "$work/skipped.txt"; head -n 300 "$work/files.txt"; } | wc -c) + 2000 ))
-  context_budget=$(( (context_tokens - max_tokens) * 3 - overhead_chars ))
+  context_budget=$(( (context_tokens - max_tokens) * 2 - overhead_chars ))
   if (( context_budget < budget )); then
     budget=$context_budget
   fi
@@ -327,6 +327,10 @@ if [[ -z "$(tr -d '[:space:]' < "$work/review.md")" ]]; then
 fi
 if [[ "$(jq -r '.choices[0].finish_reason // empty' "$work/response.json")" == "length" ]]; then
   printf '\n_The model reached its output limit, so this review may be cut off._\n' >> "$work/review.md"
+fi
+latest_sha=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.head.sha' || echo "$head_sha")
+if [[ "$latest_sha" != "$head_sha" ]]; then
+  printf "\n_New commits were pushed while this review ran, so it does not cover them. Comment \`/review\` again to review the latest commit._\n" >> "$work/review.md"
 fi
 
 publish_review
