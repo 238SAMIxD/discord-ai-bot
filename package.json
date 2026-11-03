@@ -23,6 +23,10 @@
   ],
   "author": "238SAMIxD",
   "license": "ISC",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "axios": "^1.7.9",
     "discord.js": "^14.14.1",
