@@ -99,8 +99,9 @@ extract_inline_comments() {
       ($allowed | split("\n") | map(select(length > 0)) | INDEX(.)) as $ok
       | (if type == "array" then . else [] end)
       | map(select(type == "object" and (.path | type) == "string"))
-      | map(.line |= (if type == "string" then (tonumber? // null) elif type == "number" then floor else null end))
-      | map(select(.line != null and $ok[.path + "\t" + (.line | tostring)] != null))
+      | map(.line |= (if type == "string" then (tonumber? // null) else . end))
+      | map(select((.line | type) == "number" and .line == (.line | floor)))
+      | map(select($ok[.path + "\t" + (.line | tostring)] != null))
       | .[0:25]
       | map({
           path,
@@ -116,19 +117,30 @@ extract_inline_comments() {
   mv "$work/inline-candidates.json" "$work/inline-comments.json"
 }
 
-delete_inline_comments() {
+list_old_inline_comments() {
+  : > "$work/inline-old.tsv"
   gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/comments" \
-    --jq ".[] | {id, reply: .in_reply_to_id, login: .user.login, mine: (.body | startswith(\"$inline_marker\"))}" \
+    --jq ".[] | {id, review: .pull_request_review_id, reply: .in_reply_to_id, login: .user.login, mine: (.body | startswith(\"$inline_marker\"))}" \
     > "$work/inline-existing.json" || return 1
   jq -rs --arg bot "$bot_login" '
     [.[] | .reply // empty] as $replied
     | .[]
     | select(.login == $bot and .mine)
     | select(.id as $id | $replied | any(. == $id) | not)
-    | .id
-  ' "$work/inline-existing.json" | while IFS= read -r comment_id; do
-    gh api --method DELETE "repos/$REPO/pulls/comments/$comment_id" > /dev/null
-  done
+    | "\(.id)\t\(.review // "")"
+  ' "$work/inline-existing.json" > "$work/inline-old.tsv"
+}
+
+retire_old_inline_comments() {
+  local comment_id review_id failed=0
+  while IFS=$'\t' read -r comment_id review_id; do
+    gh api --method DELETE "repos/$REPO/pulls/comments/$comment_id" > /dev/null || failed=1
+  done < "$work/inline-old.tsv"
+  while IFS= read -r review_id; do
+    gh api --method PUT "repos/$REPO/pulls/$PR_NUMBER/reviews/$review_id" \
+      -f body="$inline_marker"$'\n'"Superseded by a later AI review." > /dev/null || failed=1
+  done < <(cut -f2 "$work/inline-old.tsv" | grep -v '^$' | sort -u)
+  return "$failed"
 }
 
 post_inline_review() {
@@ -144,6 +156,21 @@ post_inline_review() {
     '{commit_id: $sha, event: "COMMENT", body: $body, comments: $comments[0]}' > "$work/review-request.json"
   gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/reviews" --input "$work/review-request.json" > /dev/null || return 1
   inline_note=" $count finding(s) are also posted as inline comments."
+}
+
+publish_inline_review() {
+  if ! list_old_inline_comments; then
+    echo "::warning::Could not list earlier inline comments, so inline comments are skipped this time."
+    return 0
+  fi
+  if ! post_inline_review; then
+    echo "::warning::Could not post the inline comments, so the earlier ones are kept and the findings are only in the review comment."
+    return 0
+  fi
+  if [[ -n "$inline_note" ]]; then
+    publish_review
+  fi
+  retire_old_inline_comments || echo "::warning::Could not remove or retire every inline comment of an earlier review."
 }
 
 publish_review() {
@@ -224,8 +251,7 @@ if [[ "$current_sha" != "$head_sha" ]]; then
 fi
 
 : > "$work/skipped.txt"
-: > "$work/lines.tsv"
-awk -v skipped="$work/skipped.txt" -v commentable="$work/lines.tsv" '
+awk -v skipped="$work/skipped.txt" '
   /^diff --git / {
     path = $0
     sub(/^diff --git a\/.* b\//, "", path)
@@ -248,11 +274,7 @@ awk -v skipped="$work/skipped.txt" -v commentable="$work/lines.tsv" '
     print
     next
   }
-  in_hunk && ($0 == "" || /^[ +]/) {
-    print path "\t" line > commentable
-    printf "%6d %s\n", line++, $0
-    next
-  }
+  in_hunk && ($0 == "" || /^[ +]/) { printf "%6d %s\n", line++, $0; next }
   in_hunk && /^-/ { printf "%6s %s\n", "", $0; next }
   { print }
 ' "$work/full.diff" > "$work/review.diff"
@@ -263,6 +285,8 @@ if [[ ! -s "$work/review.diff" ]]; then
   echo "Only lockfiles or generated files changed, so the model is not called."
   printf 'This pull request only changes lockfiles or generated files. They are not sent to the model, so there was nothing to review.\n' > "$work/review.md"
   publish_review
+  echo "[]" > "$work/inline-comments.json"
+  publish_inline_review
   exit 0
 fi
 
@@ -310,6 +334,22 @@ if (( total_chars > budget )); then
 else
   cp "$work/review.diff" "$work/prompt.diff"
 fi
+awk '
+  /^diff --git / { path = ""; next }
+  /^\+\+\+ / {
+    path = substr($0, 5)
+    if (path ~ /^".*"$/) path = substr(path, 2, length(path) - 2)
+    if (path ~ /^b\//) path = substr(path, 3)
+    else path = ""
+    next
+  }
+  path != "" && /^ *[0-9]+ ([ +]|$)/ {
+    number = $0
+    sub(/^ */, "", number)
+    sub(/ .*$/, "", number)
+    print path "\t" number
+  }
+' "$work/prompt.diff" > "$work/lines.tsv"
 echo "Diff: $total_chars characters after filtering, budget $budget, max_tokens $max_tokens."
 
 {
@@ -405,7 +445,6 @@ if [[ "$latest_sha" != "$head_sha" ]]; then
   printf "\n_New commits were pushed while this review ran, so it does not cover them. Comment \`/review\` again to review the latest commit._\n" >> "$work/review.md"
 fi
 
-delete_inline_comments || echo "::warning::Could not remove the inline comments of an earlier review."
-post_inline_review || echo "::warning::Could not post the inline comments, so the findings are only in the review comment."
 publish_review
+publish_inline_review
 echo "Review posted for $head_sha with $(jq 'length' "$work/inline-comments.json") inline comment candidate(s)."
