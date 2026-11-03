@@ -58,12 +58,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
   method: HttpMethod,
   data: TRequest,
   responseType?:
-    | "arraybuffer"
-    | "blob"
-    | "document"
-    | "json"
-    | "text"
-    | "stream",
+    "arraybuffer" | "blob" | "document" | "json" | "text" | "stream",
   timeoutMs = 0,
   waitTimeoutMs = 60_000,
   streamIdleTimeoutMs = 0,
