@@ -3,12 +3,18 @@ import axios from "axios";
 
 import { log, logError, LogLevel } from "../utils/logger.js";
 
+import type { Readable } from "node:stream";
 import type { Server } from "../types.js";
 
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
-const SERVER_WAIT_TIMEOUT_MS = 60_000;
 const serverEmitter = new EventEmitter();
+serverEmitter.setMaxListeners(0);
+
+function releaseServer(server: Server) {
+  server.available = true;
+  serverEmitter.emit("available");
+}
 
 export async function makeBaseRequest<TResponse, TRequest = object>(
   servers: Server[],
@@ -23,6 +29,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
     | "text"
     | "stream",
   timeoutMs = 0,
+  waitTimeoutMs = 0,
 ): Promise<TResponse> {
   if (servers.length === 0) {
     throw new Error("No servers available");
@@ -30,17 +37,18 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
 
   const normalizedPath = path.startsWith("/") ? path.substring(1) : path;
 
-  const timeoutTime = Date.now() + SERVER_WAIT_TIMEOUT_MS;
+  const timeoutTime = waitTimeoutMs > 0 ? Date.now() + waitTimeoutMs : Infinity;
 
   while (true) {
     let error: Error | null = null;
 
-    for (let i = 0; i < servers.length; i++) {
-      if (!servers[i].available) continue;
+    for (const server of servers) {
+      if (!server.available) continue;
 
-      servers[i].available = false;
+      server.available = false;
+      let releaseOnClose = false;
       try {
-        const url = new URL(servers[i].url);
+        const url = new URL(server.url);
         if (!url.pathname.endsWith("/")) url.pathname += "/";
         url.pathname += normalizedPath;
 
@@ -52,13 +60,16 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
           responseType,
           timeout: timeoutMs,
         });
+        if (responseType === "stream") {
+          (result.data as Readable).once("close", () => releaseServer(server));
+          releaseOnClose = true;
+        }
         return result.data as TResponse;
       } catch (err) {
         error = err as Error;
         logError(error);
       } finally {
-        servers[i].available = true;
-        serverEmitter.emit("available");
+        if (!releaseOnClose) releaseServer(server);
       }
     }
 
@@ -73,7 +84,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
 
     log.log(LogLevel.Debug, "All servers are busy, waiting for an available server.");
     await once(serverEmitter, "available", {
-      signal: AbortSignal.timeout(timeLeft),
+      signal: waitTimeoutMs > 0 ? AbortSignal.timeout(timeLeft) : undefined,
     }).catch(() => undefined);
   }
 }

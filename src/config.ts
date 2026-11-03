@@ -12,6 +12,7 @@ export interface Config {
   useCustomSystemMessage: boolean;
   useModelSystemMessage: boolean;
   requestTimeout: number;
+  serverWaitTimeout: number;
   maxAttachmentTextLength: number;
 }
 
@@ -70,6 +71,7 @@ export function getConfig(): Config {
       getBoolean(process.env.USE_SYSTEM) && !!customSystemMessage,
     useModelSystemMessage: getBoolean(process.env.USE_MODEL_SYSTEM),
     requestTimeout: parsePositiveInt(process.env.REQUEST_TIMEOUT, 0),
+    serverWaitTimeout: parsePositiveInt(process.env.SERVER_WAIT_TIMEOUT, 0),
     maxAttachmentTextLength: parsePositiveInt(
       process.env.MAX_ATTACHMENT_TEXT_LENGTH,
       8000,
