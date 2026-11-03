@@ -101,6 +101,16 @@ test("isChannelAllowed fetches an uncached channel to check its parent", async (
   assert.deepEqual(fetch.mock.calls[0]?.arguments, ["333"]);
 });
 
+test("isChannelAllowed blocks a fetched thread under a channel that is not listed", async () => {
+  setChannels("111,222");
+  const interaction = fakeInteraction({
+    channelId: "333",
+    channel: null,
+    fetch: async () => thread("444"),
+  });
+  assert.equal(await isChannelAllowed(interaction), false);
+});
+
 test("isChannelAllowed blocks an uncached channel it cannot fetch", async () => {
   setChannels("111,222");
   const missing = fakeInteraction({ channelId: "333", channel: null });
