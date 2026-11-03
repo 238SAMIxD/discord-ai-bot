@@ -95,4 +95,4 @@ export default tseslint.config(
 		}
 	},
 	eslintConfigPrettier
-);
+);

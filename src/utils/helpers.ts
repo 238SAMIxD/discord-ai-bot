@@ -2,7 +2,6 @@ import { CommandInteraction, Message } from "discord.js";
 import axios from "axios";
 import type { ResponseType } from "axios";
 
-
 export function splitText(str: string, length: number): string[] {
   str = str
     .replace(/\r\n/g, "\n")
@@ -81,7 +80,6 @@ export function parsePositiveInt(
   return parsed;
 }
 
-
 function unescapeMessageLine(line: string): string {
   let result = "";
 
@@ -141,7 +139,6 @@ function unescapeMessageLine(line: string): string {
   return result;
 }
 
-
 export function parseJSONMessage(str: string): string {
   return str
     .split(/[\r\n]+/g)
@@ -154,7 +151,6 @@ export function parseEnvString(str: string | undefined): string | null {
     ? parseJSONMessage(str).replace(/<date>/gi, new Date().toUTCString())
     : null;
 }
-
 
 export function downloadAttachment(
   url: string,

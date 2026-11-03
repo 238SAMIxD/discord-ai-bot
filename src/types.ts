@@ -20,7 +20,6 @@ export interface Server {
   available: boolean;
 }
 
-
 /**
  * Request payload for the Ollama `/api/show` endpoint.
  */

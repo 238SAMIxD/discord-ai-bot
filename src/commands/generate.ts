@@ -5,10 +5,7 @@ import {
 } from "discord.js";
 import { makeRequest, getModels, buildSystemMessage } from "../api/ollama.js";
 import { logError } from "../utils/logger.js";
-import {
-  replySplitInteraction,
-  downloadAttachment,
-} from "../utils/helpers.js";
+import { replySplitInteraction, downloadAttachment } from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
 import { extractTextFromPDF } from "../utils/pdf.js";
 import { getConfig } from "../config.js";
@@ -85,10 +82,33 @@ const generate: BotCommand = {
       }
 
       const TEXT_EXTENSIONS = [
-        ".txt", ".json", ".js", ".ts", ".md", ".yaml", ".yml",
-        ".csv", ".xml", ".html", ".css", ".py", ".rb", ".go",
-        ".java", ".c", ".cpp", ".h", ".rs", ".sh", ".bat",
-        ".toml", ".ini", ".cfg", ".env", ".log", ".sql",
+        ".txt",
+        ".json",
+        ".js",
+        ".ts",
+        ".md",
+        ".yaml",
+        ".yml",
+        ".csv",
+        ".xml",
+        ".html",
+        ".css",
+        ".py",
+        ".rb",
+        ".go",
+        ".java",
+        ".c",
+        ".cpp",
+        ".h",
+        ".rs",
+        ".sh",
+        ".bat",
+        ".toml",
+        ".ini",
+        ".cfg",
+        ".env",
+        ".log",
+        ".sql",
       ];
       const textAttachments = attachments.filter(
         (att) =>
@@ -172,27 +192,25 @@ const generate: BotCommand = {
       }
 
       if (!stream) {
-        const response = await makeRequest<OllamaGenerateResponse, OllamaGenerateRequest>(
-          "/api/generate",
-          "post",
-          payload,
-          "json",
-        );
+        const response = await makeRequest<
+          OllamaGenerateResponse,
+          OllamaGenerateRequest
+        >("/api/generate", "post", payload, "json");
         const responseText = response?.response || "(No response from Ollama)";
 
         await replySplitInteraction(interaction, responseText, true);
       } else {
-        const responseStream = await makeRequest<NodeJS.ReadableStream, OllamaGenerateRequest>(
-          "/api/generate",
-          "post",
-          payload,
-          "stream",
-        );
+        const responseStream = await makeRequest<
+          NodeJS.ReadableStream,
+          OllamaGenerateRequest
+        >("/api/generate", "post", payload, "stream");
 
         handleStreamResponse<OllamaGenerateResponse>(
           interaction,
           responseStream,
-          () => { /* no history tracking for /generate */ },
+          () => {
+            /* no history tracking for /generate */
+          },
         );
       }
     } catch (error) {

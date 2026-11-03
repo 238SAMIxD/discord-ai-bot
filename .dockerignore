@@ -1,4 +1,11 @@
-*.test.ts
+**/*.test.ts
 node_modules/
 .env
+.env.*
 dist/
+.git
+.github
+.vscode
+.agents
+.fallow
+*.md
