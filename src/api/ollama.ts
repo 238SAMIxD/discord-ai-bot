@@ -34,6 +34,7 @@ export async function makeRequest<TResponse, TRequest = object>(
     responseType,
     getConfig().requestTimeout,
     getConfig().serverWaitTimeout,
+    getConfig().streamIdleTimeout,
   );
 }
 

@@ -1,4 +1,5 @@
 import { EventEmitter, once } from "node:events";
+import { pipeline, Transform } from "node:stream";
 import axios from "axios";
 
 import { log, logError, LogLevel } from "../utils/logger.js";
@@ -16,6 +17,33 @@ function releaseServer(server: Server) {
   serverEmitter.emit("available");
 }
 
+function holdServerUntilClosed(
+  server: Server,
+  source: Readable,
+  idleTimeoutMs: number,
+): Readable {
+  let idleTimer: NodeJS.Timeout | undefined;
+  const stream = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      idleTimer?.refresh();
+      callback(null, chunk);
+    },
+  });
+
+  if (idleTimeoutMs > 0) {
+    idleTimer = setTimeout(() => {
+      stream.destroy(new Error(`Stream idle: no data received for ${idleTimeoutMs}ms`));
+    }, idleTimeoutMs);
+  }
+
+  stream.once("close", () => {
+    clearTimeout(idleTimer);
+    releaseServer(server);
+  });
+  pipeline(source, stream, () => undefined);
+  return stream;
+}
+
 export async function makeBaseRequest<TResponse, TRequest = object>(
   servers: Server[],
   path: string,
@@ -30,6 +58,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
     | "stream",
   timeoutMs = 0,
   waitTimeoutMs = 0,
+  streamIdleTimeoutMs = 0,
 ): Promise<TResponse> {
   if (servers.length === 0) {
     throw new Error("No servers available");
@@ -61,8 +90,13 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
           timeout: timeoutMs,
         });
         if (responseType === "stream") {
-          (result.data as Readable).once("close", () => releaseServer(server));
+          const stream = holdServerUntilClosed(
+            server,
+            result.data as Readable,
+            streamIdleTimeoutMs,
+          );
           releaseOnClose = true;
+          return stream as TResponse;
         }
         return result.data as TResponse;
       } catch (err) {

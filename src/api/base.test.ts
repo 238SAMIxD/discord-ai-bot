@@ -1,6 +1,6 @@
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { once } from "node:events";
+import { EventEmitter, once } from "node:events";
 import { createServer, type ServerResponse } from "node:http";
 import { text } from "node:stream/consumers";
 import { setTimeout as delay } from "node:timers/promises";
@@ -20,6 +20,8 @@ interface FakeOllama {
   url: string;
   finishStreams(): void;
   breakStreams(): void;
+  stallStreams(): void;
+  streamClosed(): Promise<unknown>;
 }
 
 setLogger(new Logger(true, "base.test"));
@@ -30,6 +32,7 @@ async function startFakeOllama(
   status = 200,
 ): Promise<FakeOllama> {
   const streams = new Map<ServerResponse, NodeJS.Timeout>();
+  const streamEvents = new EventEmitter();
   const chunk = (done: boolean) =>
     JSON.stringify({ message: { content: name }, done }) + "\n";
 
@@ -55,6 +58,7 @@ async function startFakeOllama(
     res.on("close", () => {
       clearInterval(interval);
       streams.delete(res);
+      streamEvents.emit("closed");
     });
   });
 
@@ -77,6 +81,10 @@ async function startFakeOllama(
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     finishStreams: () => closeStreams((res) => res.end(chunk(true))),
     breakStreams: () => closeStreams((res) => res.destroy()),
+    stallStreams: () => {
+      for (const interval of streams.values()) clearInterval(interval);
+    },
+    streamClosed: () => once(streamEvents, "closed"),
   };
 }
 
@@ -84,13 +92,16 @@ function toServers(...fakes: FakeOllama[]): Server[] {
   return fakes.map((fake) => ({ url: fake.url, available: true }));
 }
 
-function openStream(servers: Server[]) {
+function openStream(servers: Server[], idleTimeoutMs = 0) {
   return makeBaseRequest<Readable>(
     servers,
     "/api/chat",
     "post",
     { stream: true },
     "stream",
+    0,
+    0,
+    idleTimeoutMs,
   );
 }
 
@@ -206,6 +217,40 @@ test("makeBaseRequest releases the server when the stream errors", async (t) => 
   assert.ok(error);
   assert.equal(servers[0].available, true);
   assert.equal((await chat(servers)).message.content, "A");
+});
+
+test("makeBaseRequest aborts a stream that goes idle and releases its server", async (t) => {
+  const a = await startFakeOllama(t, "A");
+  const servers = toServers(a);
+
+  const stream = await openStream(servers, 100);
+  const consumed = consume(stream);
+  const upstreamClosed = a.streamClosed();
+
+  a.stallStreams();
+  const { error } = await consumed;
+  await upstreamClosed;
+
+  assert.ok(error);
+  assert.match(error.message, /Stream idle/);
+  assert.equal(servers[0].available, true);
+  assert.equal((await chat(servers)).message.content, "A");
+});
+
+test("makeBaseRequest keeps a stream open while data keeps arriving", async (t) => {
+  const a = await startFakeOllama(t, "A");
+  const servers = toServers(a);
+
+  const stream = await openStream(servers, 200);
+  const consumed = consume(stream);
+  await delay(400);
+  assert.equal(servers[0].available, false);
+
+  a.finishStreams();
+  const { error } = await consumed;
+
+  assert.equal(error, undefined);
+  assert.equal(servers[0].available, true);
 });
 
 test("makeBaseRequest releases a server whose request failed and tries the next one", async (t) => {
