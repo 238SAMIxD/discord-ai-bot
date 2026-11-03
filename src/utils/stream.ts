@@ -101,8 +101,8 @@ export function handleStreamResponse<T extends { message?: { content?: string };
 
   responseStream.on("error", (err: Error) => {
     logError(err);
-    void interaction.editReply({
-      content: "Error occurred while streaming response.",
-    });
+    void interaction
+      .editReply({ content: "Error occurred while streaming response." })
+      .catch(logError);
   });
 }

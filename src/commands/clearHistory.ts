@@ -13,12 +13,12 @@ const clearHistory: BotCommand = {
     try {
       await interaction.deferReply();
       const channelID = interaction.channelId ?? "";
-      const { generations: clearedGenerate, chats: clearedChat } = getChannelStats(channelID);
+      const { chats: clearedChat } = getChannelStats(channelID);
 
       clearChannelState(channelID);
 
-      if (clearedGenerate > 0 || clearedChat > 0) {
-        const text = `Cleared conversation history (${clearedGenerate} generations, ${Math.floor(clearedChat / 2)} chats) for this channel.`;
+      if (clearedChat > 0) {
+        const text = `Cleared conversation history (${Math.floor(clearedChat / 2)} chats) for this channel.`;
         await interaction.editReply({
           content: text,
         });

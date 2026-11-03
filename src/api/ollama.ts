@@ -3,6 +3,8 @@ import { getConfig } from "../config.js";
 import { makeBaseRequest, type HttpMethod } from "./base.js";
 import { log, LogLevel } from "../utils/logger.js";
 
+import type { OllamaShowRequest, OllamaShowResponse } from "../types.js";
+
 export interface OllamaModelInfo {
   name: string;
   model: string;
@@ -22,7 +24,7 @@ export async function makeRequest<TResponse, TRequest = object>(
     | "document"
     | "json"
     | "text"
-    | "stream" = "text",
+    | "stream" = "json",
 ): Promise<TResponse> {
   return makeBaseRequest<TResponse, TRequest>(
     getConfig().servers,
@@ -32,6 +34,45 @@ export async function makeRequest<TResponse, TRequest = object>(
     responseType,
     getConfig().requestTimeout,
   );
+}
+
+const modelSystemMessages = new Map<string, string | null>();
+
+async function getModelSystemMessage(model: string): Promise<string | null> {
+  const cached = modelSystemMessages.get(model);
+  if (cached !== undefined) return cached;
+
+  const info = await makeRequest<OllamaShowResponse, OllamaShowRequest>(
+    "/api/show",
+    "post",
+    { name: model },
+  );
+  const system = info?.system ?? null;
+  modelSystemMessages.set(model, system);
+  return system;
+}
+
+export async function buildSystemMessage(model: string): Promise<string> {
+  const config = getConfig();
+  const systemMessages: string[] = [];
+
+  if (config.useModelSystemMessage) {
+    try {
+      const modelSystemMessage = await getModelSystemMessage(model);
+      if (modelSystemMessage) systemMessages.push(modelSystemMessage);
+    } catch (e) {
+      log.log(
+        LogLevel.Debug,
+        `Could not fetch model system message for ${model}`,
+        e,
+      );
+    }
+  }
+  if (config.useCustomSystemMessage && config.customSystemMessage) {
+    systemMessages.push(config.customSystemMessage);
+  }
+
+  return systemMessages.join("\n\n");
 }
 
 export async function getModels(): Promise<OllamaModelInfo[]> {

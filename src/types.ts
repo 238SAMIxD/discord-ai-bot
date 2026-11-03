@@ -20,14 +20,6 @@ export interface Server {
   available: boolean;
 }
 
-/**
- * Conversation context stored per channel.
- */
-export interface ChannelMessages {
-  amount: number;
-  last: number[] | null;
-  [messageId: string]: number[] | number | null | undefined;
-}
 
 /**
  * Request payload for the Ollama `/api/show` endpoint.

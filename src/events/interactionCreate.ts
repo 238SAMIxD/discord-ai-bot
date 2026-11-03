@@ -41,15 +41,15 @@ const event: Event<Events.InteractionCreate> = {
       await command.execute(interaction);
     } catch (error) {
       logError(error);
-      if (interaction.deferred || interaction.replied) {
-        await interaction.editReply({
-          content: "There was an error while executing this command!",
-        });
-      } else {
-        await interaction.reply({
-          content: "There was an error while executing this command!",
-          flags: MessageFlags.Ephemeral,
-        });
+      const content = "There was an error while executing this command!";
+      try {
+        if (interaction.deferred || interaction.replied) {
+          await interaction.editReply({ content });
+        } else {
+          await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+        }
+      } catch (replyError) {
+        logError(replyError);
       }
     }
   },

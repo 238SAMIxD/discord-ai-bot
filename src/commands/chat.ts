@@ -3,13 +3,12 @@ import {
   ChatInputCommandInteraction,
   AutocompleteInteraction,
 } from "discord.js";
-import { makeRequest, getModels } from "../api/ollama.js";
-import { log, logError } from "../utils/logger.js";
+import { makeRequest, getModels, buildSystemMessage } from "../api/ollama.js";
+import { logError } from "../utils/logger.js";
 import { replySplitInteraction } from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
 import { getConfig } from "../config.js";
-import { BotCommand, OllamaShowResponse, OllamaChatResponse, OllamaShowRequest, OllamaChatRequest } from "../types.js";
-import { LogLevel } from "../utils/logger.js";
+import { BotCommand, OllamaChatResponse, OllamaChatRequest } from "../types.js";
 import { getChatHistory, addChatMessage } from "../state/conversations.js";
 
 const data = new SlashCommandBuilder()
@@ -63,28 +62,7 @@ const chat: BotCommand = {
       const stream = interaction.options.getBoolean("stream") ?? false;
       const channelID = interaction.channelId ?? "";
 
-      const systemMessages: string[] = [];
-      if (getConfig().useModelSystemMessage) {
-        try {
-          const info = await makeRequest<OllamaShowResponse, OllamaShowRequest>(
-            "/api/show",
-            "post",
-            { name: model },
-          );
-          if (info?.system) systemMessages.push(info.system);
-        } catch (e) {
-          log.log(
-            LogLevel.Debug,
-            `Could not fetch model system message for ${model}`,
-            e,
-          );
-        }
-      }
-      if (getConfig().useCustomSystemMessage && getConfig().customSystemMessage) {
-        systemMessages.push(getConfig().customSystemMessage!);
-      }
-
-      const systemMessage = systemMessages.join("\n\n");
+      const systemMessage = await buildSystemMessage(model);
       const messagesToSend: {
         role: "user" | "assistant" | "system";
         content: string;

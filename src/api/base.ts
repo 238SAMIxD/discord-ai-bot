@@ -1,4 +1,4 @@
-import { EventEmitter } from "node:events";
+import { EventEmitter, once } from "node:events";
 import axios from "axios";
 
 import { log, logError, LogLevel } from "../utils/logger.js";
@@ -30,72 +30,51 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
 
   const normalizedPath = path.startsWith("/") ? path.substring(1) : path;
 
-  if (servers.every((server) => !server.available)) {
-    log.log(
-      LogLevel.Debug,
-      "All servers are busy, waiting for an available server.",
-    );
-    await new Promise<void>((resolve, reject) => {
-      const onAvailable = () => {
-        if (servers.some((s) => s.available)) {
-          cleanup();
-          resolve();
-        }
-      };
-      const onTimeout = () => {
-        cleanup();
-        reject(
-          new Error(
-            "All servers busy: timed out waiting for an available server",
-          ),
-        );
-      };
-      const timer = setTimeout(onTimeout, SERVER_WAIT_TIMEOUT_MS);
-      serverEmitter.on("available", onAvailable);
+  const timeoutTime = Date.now() + SERVER_WAIT_TIMEOUT_MS;
 
-      function cleanup() {
-        clearTimeout(timer);
-        serverEmitter.off("available", onAvailable);
+  while (true) {
+    let error: Error | null = null;
+
+    for (let i = 0; i < servers.length; i++) {
+      if (!servers[i].available) continue;
+
+      servers[i].available = false;
+      try {
+        const url = new URL(servers[i].url);
+        if (!url.pathname.endsWith("/")) url.pathname += "/";
+        url.pathname += normalizedPath;
+
+        log.log(LogLevel.Debug, `Making request to ${url}`);
+        const result = await axios({
+          method,
+          url: url.toString(),
+          data,
+          responseType,
+          timeout: timeoutMs,
+        });
+        return result.data as TResponse;
+      } catch (err) {
+        error = err as Error;
+        logError(error);
+      } finally {
+        servers[i].available = true;
+        serverEmitter.emit("available");
       }
-
-      // Check one more time in case it became available before we attached the listener
-      if (servers.some((s) => s.available)) {
-        cleanup();
-        resolve();
-      }
-    });
-  }
-
-  let error: Error | null = null;
-
-  for (let i = 0; i < servers.length; i++) {
-    if (!servers[i].available) continue;
-
-    servers[i].available = false;
-    try {
-      const url = new URL(servers[i].url);
-      if (!url.pathname.endsWith("/")) url.pathname += "/";
-      url.pathname += normalizedPath;
-
-      log.log(LogLevel.Debug, `Making request to ${url}`);
-      const result = await axios({
-        method,
-        url: url.toString(),
-        data,
-        responseType,
-        timeout: timeoutMs,
-      });
-      return result.data as TResponse;
-    } catch (err) {
-      error = err as Error;
-      logError(error);
-    } finally {
-      servers[i].available = true;
-      serverEmitter.emit("available");
     }
+
+    if (error) {
+      throw error;
+    }
+
+    const timeLeft = timeoutTime - Date.now();
+    if (timeLeft <= 0) {
+      throw new Error("All servers busy: timed out waiting for an available server");
+    }
+
+    log.log(LogLevel.Debug, "All servers are busy, waiting for an available server.");
+    await once(serverEmitter, "available", {
+      signal: AbortSignal.timeout(timeLeft),
+    }).catch(() => undefined);
   }
-  if (!error) {
-    throw new Error("No servers available");
-  }
-  throw error;
 }
+

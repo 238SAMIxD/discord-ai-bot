@@ -1,6 +1,7 @@
 import { Client, ClientEvents } from "discord.js";
 import ready from "./ready.js";
 import interactionCreate from "./interactionCreate.js";
+import error from "./error.js";
 
 export interface Event<K extends keyof ClientEvents = keyof ClientEvents> {
   name: K;
@@ -22,4 +23,5 @@ function register<K extends keyof ClientEvents>(
 export function registerEvents(client: Client) {
   register(client, ready);
   register(client, interactionCreate);
+  register(client, error);
 }

@@ -3,8 +3,8 @@ import {
   ChatInputCommandInteraction,
   AutocompleteInteraction,
 } from "discord.js";
-import { makeRequest, getModels } from "../api/ollama.js";
-import { log, logError } from "../utils/logger.js";
+import { makeRequest, getModels, buildSystemMessage } from "../api/ollama.js";
+import { logError } from "../utils/logger.js";
 import {
   replySplitInteraction,
   downloadAttachment,
@@ -12,8 +12,11 @@ import {
 import { handleStreamResponse } from "../utils/stream.js";
 import { extractTextFromPDF } from "../utils/pdf.js";
 import { getConfig } from "../config.js";
-import { BotCommand, OllamaShowResponse, OllamaGenerateResponse, OllamaShowRequest, OllamaGenerateRequest } from "../types.js";
-import { LogLevel } from "../utils/logger.js";
+import {
+  BotCommand,
+  OllamaGenerateResponse,
+  OllamaGenerateRequest,
+} from "../types.js";
 
 const data = new SlashCommandBuilder()
   .setName("generate")
@@ -153,28 +156,7 @@ const generate: BotCommand = {
         imagesBase64.push(...imageContents);
       }
 
-      const systemMessages: string[] = [];
-      if (getConfig().useModelSystemMessage) {
-        try {
-          const info = await makeRequest<OllamaShowResponse, OllamaShowRequest>(
-            "/api/show",
-            "post",
-            { name: model },
-          );
-          if (info?.system) systemMessages.push(info.system);
-        } catch (e) {
-          log.log(
-            LogLevel.Debug,
-            `Could not fetch model system message for ${model}`,
-            e,
-          );
-        }
-      }
-      if (getConfig().useCustomSystemMessage && getConfig().customSystemMessage) {
-        systemMessages.push(getConfig().customSystemMessage!);
-      }
-
-      const systemMessage = systemMessages.join("\n\n");
+      const systemMessage = await buildSystemMessage(model);
 
       const payload: OllamaGenerateRequest = {
         model,
