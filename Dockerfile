@@ -2,9 +2,8 @@ FROM node:24-slim AS build
 
 WORKDIR /app
 
-RUN corepack enable
-
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN npm i -g --allow-scripts=pnpm "$(node -p "require('./package.json').packageManager")"
 RUN pnpm install --frozen-lockfile
 
 COPY . .
