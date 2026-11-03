@@ -31,7 +31,7 @@
     "axios": "^1.20.0",
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
