@@ -1,10 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  parseJSONMessage,
-  parsePositiveInt,
-} from "./helpers.js";
-
+import { parseJSONMessage, parsePositiveInt } from "./helpers.js";
 
 test("parseJSONMessage preserves plain quotes while decoding JSON-style escape sequences", () => {
   const input = String.raw`You said "hello"\nPath: C:\\Users\\bot`;
@@ -25,8 +21,6 @@ test("parseJSONMessage preserves plain quotes while decoding JSON-style escape s
     "Slash: / Backspace:\b FormFeed:\f",
   );
 });
-
-
 
 test("parsePositiveInt falls back when unset or blank, and validates numbers", () => {
   assert.equal(parsePositiveInt(undefined, 0), 0);

@@ -10,7 +10,10 @@ const event: Event<Events.InteractionCreate> = {
   async execute(interaction) {
     const config = getConfig();
     // Only filter by channel if specific channels are configured
-    if (config.channels.length > 0 && !config.channels.includes(interaction.channelId ?? "")) {
+    if (
+      config.channels.length > 0 &&
+      !config.channels.includes(interaction.channelId ?? "")
+    ) {
       return;
     }
 

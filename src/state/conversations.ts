@@ -11,11 +11,17 @@ export function getChatHistory(channelId: string): ChatHistoryMessage[] {
   return chatHistory[channelId] ?? [];
 }
 
-export function addChatMessage(channelId: string, msg: ChatHistoryMessage): void {
+export function addChatMessage(
+  channelId: string,
+  msg: ChatHistoryMessage,
+): void {
   if (!chatHistory[channelId]) chatHistory[channelId] = [];
   chatHistory[channelId].push(msg);
   if (chatHistory[channelId].length > MAX_CHAT_HISTORY) {
-    chatHistory[channelId].splice(0, chatHistory[channelId].length - MAX_CHAT_HISTORY);
+    chatHistory[channelId].splice(
+      0,
+      chatHistory[channelId].length - MAX_CHAT_HISTORY,
+    );
   }
 }
 

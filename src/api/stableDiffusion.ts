@@ -23,7 +23,9 @@ export async function makeStableDiffusionRequest<TResponse, TRequest = object>(
   );
 }
 
-export async function getStableDiffusionModels(): Promise<StableDiffusionModel[]> {
+export async function getStableDiffusionModels(): Promise<
+  StableDiffusionModel[]
+> {
   const allModels: StableDiffusionModel[] = [];
   const seenModels = new Set<string>();
 

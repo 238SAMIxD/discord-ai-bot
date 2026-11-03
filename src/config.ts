@@ -1,5 +1,9 @@
 import dotenv from "dotenv";
-import { getBoolean, parseEnvString, parsePositiveInt } from "./utils/helpers.js";
+import {
+  getBoolean,
+  parseEnvString,
+  parsePositiveInt,
+} from "./utils/helpers.js";
 import type { Server } from "./types.js";
 
 export interface Config {
@@ -43,18 +47,22 @@ export function getConfig(): Config {
 
   dotenv.config();
 
-  const customSystemMessage = parseEnvString(process.env.SYSTEM ?? process.env.SYSTEM_MESSAGE);
+  const customSystemMessage = parseEnvString(
+    process.env.SYSTEM ?? process.env.SYSTEM_MESSAGE,
+  );
   const token = process.env.TOKEN ?? process.env.DISCORD_TOKEN;
 
   if (!token) {
     throw new Error("TOKEN or DISCORD_TOKEN environment variable is required");
   }
 
-  const servers = parseServers(process.env.OLLAMA ?? process.env.OLLAMA_SERVERS, "OLLAMA");
+  const servers = parseServers(
+    process.env.OLLAMA ?? process.env.OLLAMA_SERVERS,
+    "OLLAMA",
+  );
   if (servers.length === 0) {
     throw new Error("No servers available");
   }
-
 
   cachedConfig = {
     token,
@@ -64,7 +72,9 @@ export function getConfig(): Config {
       process.env.STABLE_DIFFUSION ?? process.env.SD_SERVERS,
       "STABLE_DIFFUSION",
     ),
-    channels: (process.env.CHANNELS ?? "").split(",").filter((c) => c.length > 0),
+    channels: (process.env.CHANNELS ?? "")
+      .split(",")
+      .filter((c) => c.length > 0),
     customSystemMessage,
     useCustomSystemMessage:
       getBoolean(process.env.USE_SYSTEM) && !!customSystemMessage,

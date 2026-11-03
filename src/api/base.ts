@@ -68,13 +68,17 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
 
     const timeLeft = timeoutTime - Date.now();
     if (timeLeft <= 0) {
-      throw new Error("All servers busy: timed out waiting for an available server");
+      throw new Error(
+        "All servers busy: timed out waiting for an available server",
+      );
     }
 
-    log.log(LogLevel.Debug, "All servers are busy, waiting for an available server.");
+    log.log(
+      LogLevel.Debug,
+      "All servers are busy, waiting for an available server.",
+    );
     await once(serverEmitter, "available", {
       signal: AbortSignal.timeout(timeLeft),
     }).catch(() => undefined);
   }
 }
-
