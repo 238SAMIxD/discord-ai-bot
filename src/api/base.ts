@@ -12,6 +12,12 @@ export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 const serverEmitter = new EventEmitter();
 serverEmitter.setMaxListeners(0);
 
+const MAX_TIMER_DELAY_MS = 2 ** 31 - 1;
+
+function timerDelay(ms: number) {
+  return Math.min(Math.ceil(ms), MAX_TIMER_DELAY_MS);
+}
+
 function releaseServer(server: Server) {
   server.available = true;
   serverEmitter.emit("available");
@@ -33,7 +39,7 @@ function holdServerUntilClosed(
   if (idleTimeoutMs > 0) {
     idleTimer = setTimeout(() => {
       stream.destroy(new Error(`Stream idle: no data received for ${idleTimeoutMs}ms`));
-    }, idleTimeoutMs);
+    }, timerDelay(idleTimeoutMs));
   }
 
   stream.once("close", () => {
@@ -68,11 +74,18 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
 
   const timeoutTime = waitTimeoutMs > 0 ? Date.now() + waitTimeoutMs : Infinity;
 
+  const failed = new Set<Server>();
+  let error: Error | null = null;
+
   while (true) {
-    let error: Error | null = null;
+    let busy = false;
 
     for (const server of servers) {
-      if (!server.available) continue;
+      if (failed.has(server)) continue;
+      if (!server.available) {
+        busy = true;
+        continue;
+      }
 
       server.available = false;
       let releaseOnClose = false;
@@ -101,24 +114,29 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
         return result.data as TResponse;
       } catch (err) {
         error = err as Error;
+        failed.add(server);
         logError(error);
       } finally {
         if (!releaseOnClose) releaseServer(server);
       }
     }
 
-    if (error) {
+    if (error && !busy) {
       throw error;
     }
 
     const timeLeft = timeoutTime - Date.now();
     if (timeLeft <= 0) {
+      if (error) throw error;
       throw new Error("All servers busy: timed out waiting for an available server");
     }
 
     log.log(LogLevel.Debug, "All servers are busy, waiting for an available server.");
     await once(serverEmitter, "available", {
-      signal: waitTimeoutMs > 0 ? AbortSignal.timeout(timeLeft) : undefined,
+      signal:
+        waitTimeoutMs > 0
+          ? AbortSignal.timeout(timerDelay(timeLeft))
+          : undefined,
     }).catch(() => undefined);
   }
 }
