@@ -66,7 +66,10 @@ export function getConfig(): Config {
       process.env.STABLE_DIFFUSION ?? process.env.SD_SERVERS,
       "STABLE_DIFFUSION",
     ),
-    channels: (process.env.CHANNELS ?? "").split(",").filter((c) => c.length > 0),
+    channels: (process.env.CHANNELS ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0),
     customSystemMessage,
     useCustomSystemMessage:
       getBoolean(process.env.USE_SYSTEM) && !!customSystemMessage,
