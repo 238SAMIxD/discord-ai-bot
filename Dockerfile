@@ -1,17 +1,16 @@
-FROM node:20-slim AS build
+FROM node:24-slim AS build
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
-
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN npm i -g --allow-scripts=pnpm "$(node -p "require('./package.json').packageManager")"
 RUN pnpm install --frozen-lockfile
 
 COPY . .
 RUN pnpm run build
 RUN pnpm prune --prod
 
-FROM node:20-slim AS runtime
+FROM node:24-slim AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app
