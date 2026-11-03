@@ -1,7 +1,7 @@
 <div align="center">
     <h1>Discord AI Bot</h1>
     <h3 align="center">Discord bot to interact with <a href="https://github.com/jmorganca/ollama">Ollama</a> and <a href="https://github.com/AUTOMATIC1111/stable-diffusion-webui">AUTOMATIC1111 Stable Diffusion</a> as a chatbot</h3>
-    <h3><img alt="Stars" src="https://img.shields.io/github/stars/238SAMIxD/discord-ai-bot?display_name=tag&style=for-the-badge" /></h3>
+    <h3><img alt="Stars" src="https://img.shields.io/github/stars/238SAMIxD/discord-ai-bot?display_name=tag&style=for-the-badge" /> <a href="https://github.com/238SAMIxD/discord-ai-bot/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/238SAMIxD/discord-ai-bot/ci.yml?branch=main&style=for-the-badge&label=ci" /></a></h3>
 </div>
 
 ### Set-up instructions
@@ -43,3 +43,20 @@
 3. Start the bot with `make compose-up` if you have Make installed
    - Otherwise, try `docker compose -p discord-ai up` instead
 4. You can interact with the bot by @mentioning it with your message
+
+### Contributing / CI
+
+Every pull request and every push to `main` runs these GitHub Actions checks:
+
+- `check`: `pnpm test:prettier`, `pnpm test:lint`, `pnpm test:tsc`, `pnpm test` and `pnpm build` on Node.js 22 and 24
+- `docker`: builds the Docker image without pushing it anywhere, then checks that the container refuses to start without a token
+- `codeql`: CodeQL code scanning, which also runs weekly
+
+Run the same checks locally before opening a pull request:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm test:prettier && pnpm test:lint && pnpm test:tsc && pnpm test && pnpm build
+```
+
+The repository admin can comment `/review` on a pull request to get an AI code review from a free [OpenRouter](https://openrouter.ai) model. Any text after the command is passed to the reviewer as extra instructions, for example `/review focus on attachment handling`. The review is posted as one comment, which later runs update in place.
