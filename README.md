@@ -60,4 +60,4 @@ pnpm install --frozen-lockfile
 pnpm test:prettier && pnpm test:lint && pnpm test:tsc && pnpm test && pnpm build
 ```
 
-The repository admin can comment `/review` on a pull request to get an AI code review from a free [OpenRouter](https://openrouter.ai) model. Any text after the command is passed to the reviewer as extra instructions, for example `/review focus on attachment handling`. The review is posted as one comment, which later runs update in place.
+The repository admin can comment `/review` on a pull request to get an AI code review from an [OpenRouter](https://openrouter.ai) model. It uses the free `nvidia/nemotron-3-ultra-550b-a55b:free` model unless the `OPENROUTER_MODEL` repository variable names another one, and requests to paid models are billed to the OpenRouter account that owns the `OPENROUTER_API_KEY` secret. Any text after the command is passed to the reviewer as extra instructions, for example `/review focus on attachment handling`. The review is posted as one comment, which later runs update in place.
