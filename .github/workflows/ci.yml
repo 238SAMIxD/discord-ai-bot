@@ -100,3 +100,16 @@ jobs:
             exit 1
           fi
           echo "The container exited with status $status and reported the missing token."
+
+      - name: Check every bot module loads in the image
+        run: |
+          set +e
+          output=$(timeout 60 docker run --rm --network none -e TOKEN=placeholder -e OLLAMA=http://127.0.0.1:11434 discord-ai-bot:ci node dist/bot.js 2>&1)
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if ! grep -qF "Failed to login to Discord" <<< "$output"; then
+            echo "::error::The bot exited with status $status before trying to log in, so a module failed to load in the image."
+            exit 1
+          fi
+          echo "Every bot module loaded and the offline login failed as expected."
