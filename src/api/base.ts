@@ -38,7 +38,9 @@ function holdServerUntilClosed(
 
   if (idleTimeoutMs > 0) {
     idleTimer = setTimeout(() => {
-      stream.destroy(new Error(`Stream idle: no data received for ${idleTimeoutMs}ms`));
+      stream.destroy(
+        new Error(`Stream idle: no data received for ${idleTimeoutMs}ms`),
+      );
     }, timerDelay(idleTimeoutMs));
   }
 
@@ -128,10 +130,15 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
     const timeLeft = timeoutTime - Date.now();
     if (timeLeft <= 0) {
       if (error) throw error;
-      throw new Error("All servers busy: timed out waiting for an available server");
+      throw new Error(
+        "All servers busy: timed out waiting for an available server",
+      );
     }
 
-    log.log(LogLevel.Debug, "All servers are busy, waiting for an available server.");
+    log.log(
+      LogLevel.Debug,
+      "All servers are busy, waiting for an available server.",
+    );
     await once(serverEmitter, "available", {
       signal:
         waitTimeoutMs > 0
@@ -140,4 +147,3 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
     }).catch(() => undefined);
   }
 }
-

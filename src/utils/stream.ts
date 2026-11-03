@@ -6,7 +6,9 @@ import { splitText } from "./helpers.js";
  * Handles an Ollama streaming response, throttling Discord message edits
  * and updating the chat history.
  */
-export function handleStreamResponse<T extends { message?: { content?: string }; response?: string }>(
+export function handleStreamResponse<
+  T extends { message?: { content?: string }; response?: string },
+>(
   interaction: ChatInputCommandInteraction,
   responseStream: NodeJS.ReadableStream,
   onComplete: (fullText: string) => void | Promise<void>,

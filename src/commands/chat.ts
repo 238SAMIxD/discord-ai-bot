@@ -82,12 +82,10 @@ const chat: BotCommand = {
       };
 
       if (!stream) {
-        const response = await makeRequest<OllamaChatResponse, OllamaChatRequest>(
-          "/api/chat",
-          "post",
-          payload,
-          "json",
-        );
+        const response = await makeRequest<
+          OllamaChatResponse,
+          OllamaChatRequest
+        >("/api/chat", "post", payload, "json");
         const responseText =
           response?.message?.content || "(No response from Ollama)";
 
@@ -99,12 +97,10 @@ const chat: BotCommand = {
 
         await replySplitInteraction(interaction, responseText, true);
       } else {
-        const responseStream = await makeRequest<NodeJS.ReadableStream, OllamaChatRequest>(
-          "/api/chat",
-          "post",
-          payload,
-          "stream",
-        );
+        const responseStream = await makeRequest<
+          NodeJS.ReadableStream,
+          OllamaChatRequest
+        >("/api/chat", "post", payload, "stream");
 
         handleStreamResponse<OllamaChatResponse>(
           interaction,

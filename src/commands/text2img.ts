@@ -74,7 +74,8 @@ const text2img: BotCommand = {
       const steps = interaction.options.getInteger("steps") ?? 10;
       const batch_count = interaction.options.getInteger("batch_count") ?? 1;
       const batch_size = interaction.options.getInteger("batch_size") ?? 1;
-      const enhance_prompt = interaction.options.getBoolean("enhance_prompt") ?? false;
+      const enhance_prompt =
+        interaction.options.getBoolean("enhance_prompt") ?? false;
 
       const payload: SDTxt2ImgRequest = {
         prompt,
@@ -87,12 +88,10 @@ const text2img: BotCommand = {
         enhance_prompt,
       };
 
-      const stableDiffusionResponse =
-        await makeStableDiffusionRequest<SDResponse, SDTxt2ImgRequest>(
-          "/sdapi/v1/txt2img",
-          "post",
-          payload,
-        );
+      const stableDiffusionResponse = await makeStableDiffusionRequest<
+        SDResponse,
+        SDTxt2ImgRequest
+      >("/sdapi/v1/txt2img", "post", payload);
       const images = (stableDiffusionResponse?.images ?? []).map((image) =>
         Buffer.from(image, "base64"),
       );
