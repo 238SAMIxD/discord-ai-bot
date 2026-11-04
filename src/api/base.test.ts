@@ -632,3 +632,49 @@ test(
     assert.deepEqual(events.at(-1), "C:null");
   },
 );
+
+test("makeBaseRequest reports the server that answered", async (t) => {
+  const a = await startFakeOllama(t, "A");
+  const servers = toServers(a);
+  const used: Server[] = [];
+
+  await makeBaseRequest<ChatChunk>(
+    servers,
+    "/api/chat",
+    "post",
+    { stream: false },
+    { responseType: "json", onServer: (server) => used.push(server) },
+  );
+
+  assert.deepEqual(used, [servers[0]]);
+});
+
+test("makeBaseRequest reports the server it failed over to", async (t) => {
+  const a = await startFakeOllama(t, "A", 500);
+  const b = await startFakeOllama(t, "B");
+  const servers = toServers(a, b);
+  const used: Server[] = [];
+  const onServer = (server: Server) => used.push(server);
+
+  const reply = await makeBaseRequest<ChatChunk>(
+    servers,
+    "/api/chat",
+    "post",
+    { stream: false },
+    { responseType: "json", onServer },
+  );
+  assert.equal(reply.message.content, "B");
+
+  const stream = await makeBaseRequest<Readable>(
+    servers,
+    "/api/chat",
+    "post",
+    { stream: true },
+    { responseType: "stream", waitTimeoutMs: 0, onServer },
+  );
+  const consumed = consume(stream);
+  b.finishStreams();
+  await consumed;
+
+  assert.deepEqual(used, [servers[1], servers[1]]);
+});

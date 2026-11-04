@@ -20,7 +20,10 @@ const PACKED_FIELDS = [
   "eval_duration",
   "load_duration",
   "total_duration",
+  "context_length",
 ] as const;
+
+const CONTEXT_WARNING_SHARE = 0.9;
 
 const MAX_LABEL_LENGTH = 80;
 
@@ -69,6 +72,23 @@ function formatSpeed(
     return null;
   }
   return `${speedFormat.format(count / (nanoseconds / 1e9))} tokens/s`;
+}
+
+function contextUsage(
+  stats: PackedStats,
+): { used: number; size: number } | null {
+  const { prompt_eval_count, eval_count, context_length } = stats;
+  if (!isStat(prompt_eval_count) || !isStat(eval_count)) return null;
+  if (!isStat(context_length) || context_length === 0) return null;
+  const used = prompt_eval_count + eval_count;
+  return isStat(used) ? { used, size: context_length } : null;
+}
+
+function describeContext(stats: PackedStats): string | null {
+  const usage = contextUsage(stats);
+  if (!usage) return null;
+  const percent = Math.min(100, Math.round((usage.used / usage.size) * 100));
+  return `${countFormat.format(usage.used)} / ${countFormat.format(usage.size)} tokens (${percent}%)`;
 }
 
 function truncate(text: string, length: number): string {
@@ -128,6 +148,18 @@ function statButtons(stats: OllamaStats): StatButton[][] {
       emoji: "📥",
       label: formatCount(stats.prompt_eval_count, "prompt token"),
       style: ButtonStyle.Secondary,
+    });
+  }
+  const usage = contextUsage(stats);
+  if (usage) {
+    context.push({
+      key: "context",
+      emoji: "🧠",
+      label: `${countFormat.format(usage.used)} / ${countFormat.format(usage.size)} ctx`,
+      style:
+        usage.used >= usage.size * CONTEXT_WARNING_SHARE
+          ? ButtonStyle.Danger
+          : ButtonStyle.Secondary,
     });
   }
   if (isStat(stats.load_duration)) {
@@ -192,6 +224,10 @@ function statsFields(stats: PackedStats): { name: string; value: string }[] {
     {
       name: "Response",
       value: describeTokens(stats.eval_count, stats.eval_duration),
+    },
+    {
+      name: "Context",
+      value: describeContext(stats),
     },
     {
       name: "Load time",

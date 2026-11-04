@@ -4,7 +4,12 @@ import {
   AutocompleteInteraction,
   MessageFlags,
 } from "discord.js";
-import { makeRequest, getModels, buildSystemMessage } from "../api/ollama.js";
+import {
+  makeRequest,
+  getModels,
+  buildSystemMessage,
+  withLoadedContext,
+} from "../api/ollama.js";
 import { ServersBusyError } from "../api/base.js";
 import { logError } from "../utils/logger.js";
 import {
@@ -28,6 +33,7 @@ import {
   BotCommand,
   OllamaGenerateResponse,
   OllamaGenerateRequest,
+  Server,
 } from "../types.js";
 
 const data = new SlashCommandBuilder()
@@ -231,6 +237,11 @@ const generate: BotCommand = {
         payload.images = imagesBase64;
       }
 
+      let usedServer: Server | undefined;
+      const onServer = (server: Server) => {
+        usedServer = server;
+      };
+
       if (!stream) {
         const response = await makeRequest<
           OllamaGenerateResponse,
@@ -242,6 +253,7 @@ const generate: BotCommand = {
           "json",
           stop.signal,
           stop.queueStatus,
+          onServer,
         );
         stop.complete();
         const responseText = response?.response || "(No response from Ollama)";
@@ -250,7 +262,9 @@ const generate: BotCommand = {
           interaction,
           responseText,
           true,
-          statsComponents(response),
+          statsComponents(
+            response && (await withLoadedContext(response, usedServer)),
+          ),
         );
       } else {
         const responseStream = await makeRequest<
@@ -263,6 +277,7 @@ const generate: BotCommand = {
           "stream",
           stop.signal,
           stop.queueStatus,
+          onServer,
         );
 
         stoppedPartway = await handleStreamResponse<OllamaGenerateResponse>(
@@ -270,6 +285,7 @@ const generate: BotCommand = {
           responseStream,
           () => stop.complete(),
           stop.signal,
+          (stats) => withLoadedContext(stats, usedServer),
         );
       }
     } catch (error) {

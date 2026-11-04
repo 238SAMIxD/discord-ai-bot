@@ -24,6 +24,7 @@ export interface BaseRequestOptions {
   signal?: AbortSignal;
   interrupt?: (server: Server) => Promise<unknown>;
   onQueue?: QueueListener;
+  onServer?: (server: Server) => void;
 }
 
 /**
@@ -126,6 +127,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
     signal,
     interrupt,
     onQueue,
+    onServer,
   }: BaseRequestOptions = {},
 ): Promise<TResponse> {
   if (servers.length === 0) {
@@ -203,8 +205,10 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
               streamIdleTimeoutMs,
             );
             releaseLater = true;
+            onServer?.(server);
             return stream as TResponse;
           }
+          onServer?.(server);
           return result.data as TResponse;
         } catch (err) {
           if (signal?.aborted && interrupt && request) {

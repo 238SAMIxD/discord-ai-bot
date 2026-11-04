@@ -10,6 +10,7 @@ import type {
   ButtonBuilder,
   ChatInputCommandInteraction,
 } from "discord.js";
+import type { OllamaStats } from "../types.js";
 
 interface FinalReply {
   content: string;
@@ -167,7 +168,9 @@ test("handleStreamResponse puts the stats buttons on the last message of a long 
   );
 });
 
-function stoppableStream() {
+function stoppableStream(
+  completeStats?: (stats: OllamaStats) => Promise<OllamaStats>,
+) {
   const saved: string[] = [];
   const interaction = fakeInteraction();
   const stream = new PassThrough();
@@ -179,6 +182,7 @@ function stoppableStream() {
       saved.push(text);
     },
     stop.signal,
+    completeStats,
   );
   const stopStream = () => {
     stop.abort();
@@ -261,4 +265,51 @@ test("handleStreamResponse rejects when it is stopped before any text arrives", 
   await assert.rejects(outcome, /Stopped/);
   assert.deepEqual(saved, []);
   assert.equal(interaction.editReply.mock.callCount(), 0);
+});
+
+test("handleStreamResponse adds the completed stats to the final message", async () => {
+  const interaction = fakeInteraction();
+  const stream = new PassThrough();
+  const completeStats = mock.fn(async (stats: OllamaStats) => ({
+    ...stats,
+    context_length: 4096,
+  }));
+  const done = handleStreamResponse(
+    interaction as unknown as ChatInputCommandInteraction,
+    stream,
+    () => undefined,
+    undefined,
+    completeStats,
+  );
+  stream.end(
+    JSON.stringify({
+      message: { content: "Hello" },
+      done: true,
+      prompt_eval_count: 1000,
+      eval_count: 24,
+    }),
+  );
+  await done;
+
+  assert.equal(completeStats.mock.callCount(), 1);
+  const final = interaction.editReply.mock.calls.at(-1)?.arguments[0];
+  assert.deepEqual(buttonLabels(final as FinalReply), [
+    ["24 tokens"],
+    ["1,000 prompt tokens", "1,024 / 4,096 ctx"],
+  ]);
+});
+
+test("handleStreamResponse skips completing the stats once stopped", async () => {
+  const completeStats = mock.fn(async (stats: OllamaStats) => stats);
+  const { stream, outcome, stopStream } = stoppableStream(completeStats);
+
+  stream.write(
+    `${JSON.stringify({ message: { content: "Hello" }, done: true, eval_count: 2 })}
+`,
+  );
+  await setImmediate();
+  stopStream();
+
+  assert.equal(await outcome, true);
+  assert.equal(completeStats.mock.callCount(), 0);
 });

@@ -63,6 +63,23 @@ export interface OllamaStats {
   prompt_eval_duration?: number;
   eval_count?: number;
   eval_duration?: number;
+  context_length?: number;
+}
+
+/**
+ * A model loaded in memory, as listed by the Ollama `/api/ps` endpoint.
+ */
+export interface OllamaPsModel {
+  name?: string;
+  model?: string;
+  context_length?: number;
+}
+
+/**
+ * Response from the Ollama `/api/ps` endpoint.
+ */
+export interface OllamaPsResponse {
+  models?: OllamaPsModel[];
 }
 
 /**
