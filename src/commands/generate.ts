@@ -8,6 +8,7 @@ import { logError } from "../utils/logger.js";
 import { replySplitInteraction, downloadAttachment } from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
 import { extractTextFromPDF } from "../utils/pdf.js";
+import { createStopButton } from "../utils/stopButton.js";
 import { getConfig } from "../config.js";
 import {
   BotCommand,
@@ -68,8 +69,11 @@ const generate: BotCommand = {
     }
   },
   async execute(interaction: ChatInputCommandInteraction) {
+    const stop = createStopButton(interaction);
+    let stoppedPartway = false;
     try {
       await interaction.deferReply();
+      await stop.show();
       const prompt = interaction.options.getString("prompt", true);
       const model = interaction.options.getString("model") ?? getConfig().model;
       const stream = interaction.options.getBoolean("stream") ?? false;
@@ -132,7 +136,7 @@ const generate: BotCommand = {
       if (textAttachments.length > 0) {
         const textContents = await Promise.all(
           textAttachments.map(async (att) => {
-            const res = await downloadAttachment(att.url, "text");
+            const res = await downloadAttachment(att.url, "text", stop.signal);
             let text = String(res.data);
             if (text.length > getConfig().maxAttachmentTextLength) {
               text =
@@ -149,9 +153,14 @@ const generate: BotCommand = {
       if (pdfAttachments.length > 0) {
         const pdfContents = await Promise.all(
           pdfAttachments.map(async (att) => {
-            const res = await downloadAttachment(att.url, "arraybuffer");
+            const res = await downloadAttachment(
+              att.url,
+              "arraybuffer",
+              stop.signal,
+            );
             let text = await extractTextFromPDF(
               Buffer.from(res.data as ArrayBuffer),
+              stop.signal,
             );
             if (text.length > getConfig().maxAttachmentTextLength) {
               text =
@@ -169,14 +178,18 @@ const generate: BotCommand = {
       if (imageAttachments.length > 0) {
         const imageContents = await Promise.all(
           imageAttachments.map(async (att) => {
-            const res = await downloadAttachment(att.url, "arraybuffer");
+            const res = await downloadAttachment(
+              att.url,
+              "arraybuffer",
+              stop.signal,
+            );
             return Buffer.from(res.data as ArrayBuffer).toString("base64");
           }),
         );
         imagesBase64.push(...imageContents);
       }
 
-      const systemMessage = await buildSystemMessage(model);
+      const systemMessage = await buildSystemMessage(model, stop.signal);
 
       const payload: OllamaGenerateRequest = {
         model,
@@ -195,7 +208,8 @@ const generate: BotCommand = {
         const response = await makeRequest<
           OllamaGenerateResponse,
           OllamaGenerateRequest
-        >("/api/generate", "post", payload, "json");
+        >("/api/generate", "post", payload, "json", stop.signal);
+        stop.complete();
         const responseText = response?.response || "(No response from Ollama)";
 
         await replySplitInteraction(interaction, responseText, true);
@@ -203,19 +217,24 @@ const generate: BotCommand = {
         const responseStream = await makeRequest<
           NodeJS.ReadableStream,
           OllamaGenerateRequest
-        >("/api/generate", "post", payload, "stream");
+        >("/api/generate", "post", payload, "stream", stop.signal);
 
-        await handleStreamResponse<OllamaGenerateResponse>(
+        stoppedPartway = await handleStreamResponse<OllamaGenerateResponse>(
           interaction,
           responseStream,
-          () => {
-            /* no history tracking for /generate */
-          },
+          () => stop.complete(),
+          stop.signal,
         );
       }
     } catch (error) {
-      logError(error);
-      await interaction.editReply({ content: "Failed to run generate." });
+      if (stop.signal.aborted) {
+        await interaction.editReply({ content: "Stopped." });
+      } else {
+        logError(error);
+        await interaction.editReply({ content: "Failed to run generate." });
+      }
+    } finally {
+      await stop.finish(stoppedPartway);
     }
   },
 };

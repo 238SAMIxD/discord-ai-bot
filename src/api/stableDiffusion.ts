@@ -1,26 +1,62 @@
+import { randomUUID } from "node:crypto";
 import axios from "axios";
 import { getConfig } from "../config.js";
 import { makeBaseRequest, type HttpMethod } from "./base.js";
 import { log, LogLevel } from "../utils/logger.js";
+
+import type { Server } from "../types.js";
 
 export interface StableDiffusionModel {
   title: string;
   model_name: string;
 }
 
-export async function makeStableDiffusionRequest<TResponse, TRequest = object>(
+interface TaskProgress {
+  active?: boolean;
+}
+
+function serverUrl(server: Server, path: string): string {
+  const url = new URL(server.url);
+  if (!url.pathname.endsWith("/")) url.pathname += "/";
+  url.pathname += path;
+  return url.toString();
+}
+
+async function interruptTask(server: Server, taskId: string): Promise<void> {
+  const { data } = await axios.post<TaskProgress>(
+    serverUrl(server, "internal/progress"),
+    { id_task: taskId, live_preview: false },
+    { timeout: 5000 },
+  );
+  if (!data.active) return;
+
+  log.log(LogLevel.Debug, `Interrupting task ${taskId} on ${server.url}`);
+  await axios.post(serverUrl(server, "sdapi/v1/interrupt"), undefined, {
+    timeout: 5000,
+  });
+}
+
+export async function makeStableDiffusionRequest<
+  TResponse,
+  TRequest extends object = object,
+>(
   path: string,
   method: HttpMethod,
   data: TRequest,
+  signal?: AbortSignal,
 ): Promise<TResponse> {
-  return makeBaseRequest<TResponse, TRequest>(
+  const taskId = randomUUID();
+  return makeBaseRequest<TResponse, TRequest & { force_task_id: string }>(
     getConfig().stableDiffusionServers,
     path,
     method,
-    data,
+    { ...data, force_task_id: taskId },
     undefined,
     getConfig().requestTimeout,
     getConfig().serverWaitTimeout,
+    0,
+    signal,
+    (server) => interruptTask(server, taskId),
   );
 }
 

@@ -32,6 +32,7 @@
    - You can edit the system message the bot uses, or disable it entirely
    - `/chat` sends each prompt as `Name: prompt`, using the sender's server nickname or display name, so the model knows who is talking
    - `/chat` history is saved in an SQLite database at `CHAT_HISTORY_DB` (default `./data/chat-history.db`, relative to the folder you start the bot from), so conversations survive restarts. Each user has their own history in each channel, limited to their last 50 messages, and `/clearhistory` deletes yours in the current channel
+   - While `/chat`, `/generate` or `/text2img` runs, its reply shows a red Stop button that only the person who ran the command can press. Stopping cancels the request, so Ollama stops generating and the server is freed for the next request. A streamed reply keeps the text generated so far, and a stopped `/chat` isn't saved to the history. `/text2img` interrupts its image only once AUTOMATIC1111 reports it as the one rendering, which needs AUTOMATIC1111 1.8 or newer started without `--nowebui`, and the Stable Diffusion server stays busy until it has finished with the stopped job
 8. Install the required dependencies with `pnpm i`
 9. Start the bot with `pnpm start`
 10. You can interact with the bot by @mentioning it with your message

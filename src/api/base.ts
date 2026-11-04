@@ -1,6 +1,6 @@
 import { EventEmitter, once } from "node:events";
 import { pipeline, Transform } from "node:stream";
-import axios from "axios";
+import axios, { type AxiosResponse } from "axios";
 
 import { log, logError, LogLevel } from "../utils/logger.js";
 
@@ -52,6 +52,16 @@ function holdServerUntilClosed(
   return stream;
 }
 
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    promise
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
 export async function makeBaseRequest<TResponse, TRequest = object>(
   servers: Server[],
   path: string,
@@ -63,6 +73,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
   waitTimeoutMs = 60_000,
   streamIdleTimeoutMs = 0,
   signal?: AbortSignal,
+  interrupt?: (server: Server) => Promise<unknown>,
 ): Promise<TResponse> {
   if (servers.length === 0) {
     throw new Error("No servers available");
@@ -87,38 +98,49 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
       }
 
       server.available = false;
-      let releaseOnClose = false;
+      let request: Promise<AxiosResponse> | undefined;
+      let releaseLater = false;
       try {
         const url = new URL(server.url);
         if (!url.pathname.endsWith("/")) url.pathname += "/";
         url.pathname += normalizedPath;
 
         log.log(LogLevel.Debug, `Making request to ${url}`);
-        const result = await axios({
+        request = axios({
           method,
           url: url.toString(),
           data,
           responseType,
           timeout: timeoutMs,
-          signal,
+          signal: interrupt ? undefined : signal,
         });
+        const result =
+          interrupt && signal
+            ? await untilAborted(request, signal)
+            : await request;
         if (responseType === "stream") {
           const stream = holdServerUntilClosed(
             server,
             result.data as Readable,
             streamIdleTimeoutMs,
           );
-          releaseOnClose = true;
+          releaseLater = true;
           return stream as TResponse;
         }
         return result.data as TResponse;
       } catch (err) {
+        if (signal?.aborted && interrupt && request) {
+          const release = () => releaseServer(server);
+          void request.then(release, release);
+          releaseLater = true;
+          void interrupt(server).catch(logError);
+        }
         signal?.throwIfAborted();
         error = err as Error;
         failed.add(server);
         logError(error);
       } finally {
-        if (!releaseOnClose) releaseServer(server);
+        if (!releaseLater) releaseServer(server);
       }
     }
 

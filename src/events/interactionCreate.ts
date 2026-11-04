@@ -3,6 +3,7 @@ import { logError } from "../utils/logger.js";
 import type { Event } from "./index.js";
 import { getCommands } from "../commands/commands.js";
 import { isChannelAllowed } from "../utils/channels.js";
+import { handleStopButton, isStopButton } from "../utils/stopButton.js";
 
 const event: Event<Events.InteractionCreate> = {
   name: Events.InteractionCreate,
@@ -22,6 +23,17 @@ const event: Event<Events.InteractionCreate> = {
         }
       } catch (error) {
         logError(error);
+      }
+      return;
+    }
+
+    if (interaction.isButton()) {
+      if (isStopButton(interaction)) {
+        try {
+          await handleStopButton(interaction);
+        } catch (error) {
+          logError(error);
+        }
       }
       return;
     }

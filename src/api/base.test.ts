@@ -393,6 +393,118 @@ test("makeBaseRequest closes its stream and releases the server once its signal 
   assert.equal((await chat(servers)).message.content, "A");
 });
 
+async function startHeldServer(t: TestContext) {
+  const requests = new EventEmitter();
+  const held: ServerResponse[] = [];
+  const server = createServer((_req, res) => {
+    held.push(res);
+    requests.emit("request");
+  });
+
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+
+  return {
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    nextRequest: () => once(requests, "request"),
+    answer: () => {
+      for (const res of held.splice(0)) res.end("{}");
+    },
+  };
+}
+
+function txt2img(
+  servers: Server[],
+  waitTimeoutMs = 0,
+  signal?: AbortSignal,
+  interrupt?: (server: Server) => Promise<unknown>,
+) {
+  return makeBaseRequest<object>(
+    servers,
+    "/sdapi/v1/txt2img",
+    "post",
+    {},
+    "json",
+    0,
+    waitTimeoutMs,
+    0,
+    signal,
+    interrupt,
+  );
+}
+
+test("makeBaseRequest without an interrupt cancels an aborted request and frees its server", async (t) => {
+  const held = await startHeldServer(t);
+  const servers: Server[] = [{ url: held.url, available: true }];
+  const controller = new AbortController();
+
+  const received = held.nextRequest();
+  const reply = txt2img(servers, 0, controller.signal);
+  await received;
+  controller.abort();
+
+  await assert.rejects(reply, { name: "AbortError" });
+  assert.equal(servers[0].available, true);
+});
+
+test(
+  "makeBaseRequest with an interrupt leaves an aborted request running and keeps its server until it ends",
+  { timeout: 5_000 },
+  async (t) => {
+    const held = await startHeldServer(t);
+    const servers: Server[] = [{ url: held.url, available: true }];
+    const controller = new AbortController();
+    const interrupted: Server[] = [];
+
+    const received = held.nextRequest();
+    const reply = txt2img(servers, 0, controller.signal, (server) => {
+      interrupted.push(server);
+      return new Promise(() => undefined);
+    });
+    await received;
+    controller.abort();
+
+    await assert.rejects(reply, { name: "AbortError" });
+    assert.deepEqual(interrupted, [servers[0]]);
+    assert.equal(servers[0].available, false);
+
+    const nextReceived = held.nextRequest();
+    const next = txt2img(servers, 1_000);
+    assert.equal(await isPending(nextReceived, 50), true);
+
+    held.answer();
+    await nextReceived;
+    held.answer();
+    assert.deepEqual(await next, {});
+  },
+);
+
+test("makeBaseRequest doesn't interrupt a request that fails without being aborted", async (t) => {
+  const a = await startFakeOllama(t, "A", 500);
+  const interrupt = t.mock.fn(async () => undefined);
+
+  await assert.rejects(
+    makeBaseRequest(
+      toServers(a),
+      "/api/chat",
+      "post",
+      { stream: false },
+      "json",
+      0,
+      0,
+      0,
+      new AbortController().signal,
+      interrupt,
+    ),
+    { name: "AxiosError", status: 500 },
+  );
+  assert.equal(interrupt.mock.callCount(), 0);
+});
+
 test(
   "makeBaseRequest waits up to 60 seconds for a free server by default",
   { timeout: 5_000 },

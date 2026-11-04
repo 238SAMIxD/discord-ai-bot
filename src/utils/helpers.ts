@@ -156,9 +156,11 @@ export function parseEnvString(str: string | undefined): string | null {
 export function downloadAttachment(
   url: string,
   responseType: ResponseType = "json",
+  signal?: AbortSignal,
 ) {
   return axios.get(url, {
     responseType,
+    signal,
   });
 }
 
