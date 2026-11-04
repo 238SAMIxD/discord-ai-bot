@@ -77,6 +77,7 @@ export async function handleStreamResponse<
     await finished(responseStream);
   } catch (error) {
     failed = true;
+    await streamState.editPromise.catch(() => undefined);
     throw error;
   }
 
