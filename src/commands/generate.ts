@@ -7,6 +7,7 @@ import { makeRequest, getModels, buildSystemMessage } from "../api/ollama.js";
 import { logError } from "../utils/logger.js";
 import { replySplitInteraction, downloadAttachment } from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
+import { statsComponents } from "../utils/stats.js";
 import { extractTextFromPDF } from "../utils/pdf.js";
 import { getConfig } from "../config.js";
 import {
@@ -198,7 +199,12 @@ const generate: BotCommand = {
         >("/api/generate", "post", payload, "json");
         const responseText = response?.response || "(No response from Ollama)";
 
-        await replySplitInteraction(interaction, responseText, true);
+        await replySplitInteraction(
+          interaction,
+          responseText,
+          true,
+          statsComponents(response),
+        );
       } else {
         const responseStream = await makeRequest<
           NodeJS.ReadableStream,

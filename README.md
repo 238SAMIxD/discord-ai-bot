@@ -32,6 +32,7 @@
    - You can edit the system message the bot uses, or disable it entirely
    - `/chat` sends each prompt as `Name: prompt`, using the sender's server nickname or display name, so the model knows who is talking
    - `/chat` history is saved in an SQLite database at `CHAT_HISTORY_DB` (default `./data/chat-history.db`, relative to the folder you start the bot from), so conversations survive restarts. Each user has their own history in each channel, limited to their last 50 messages, and `/clearhistory` deletes yours in the current channel
+   - `/chat` and `/generate` answers end with buttons showing Ollama's stats for that answer: the model, response tokens, generation speed, prompt tokens, model load time and total time. Clicking one shows a breakdown only you can see. Set `SHOW_STATS=false` to hide the buttons
 8. Install the required dependencies with `pnpm i`
 9. Start the bot with `pnpm start`
 10. You can interact with the bot by @mentioning it with your message

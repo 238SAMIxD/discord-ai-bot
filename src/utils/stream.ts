@@ -1,14 +1,21 @@
 import { finished } from "node:stream/promises";
 import { ChatInputCommandInteraction, Message } from "discord.js";
 import { logError } from "./logger.js";
-import { splitText } from "./helpers.js";
+import { replySplitInteraction, splitText } from "./helpers.js";
+import { statsComponents } from "./stats.js";
+
+import type { OllamaStats } from "../types.js";
 
 /**
  * Handles an Ollama streaming response, throttling Discord message edits
  * and updating the chat history.
  */
 export async function handleStreamResponse<
-  T extends { message?: { content?: string }; response?: string },
+  T extends OllamaStats & {
+    done?: boolean;
+    message?: { content?: string };
+    response?: string;
+  },
 >(
   interaction: ChatInputCommandInteraction,
   responseStream: NodeJS.ReadableStream,
@@ -19,14 +26,15 @@ export async function handleStreamResponse<
     buffer: "",
     lastEditTime: Date.now(),
     editPromise: Promise.resolve() as Promise<Message | void>,
+    stats: undefined as OllamaStats | undefined,
   };
 
   let isEditing = false;
   let pendingEdit = false;
-  let failed = false;
+  let stopped = false;
 
   const updateMessage = async (force = false) => {
-    if (failed) return;
+    if (stopped) return;
     if (isEditing) {
       pendingEdit = true;
       return;
@@ -54,58 +62,49 @@ export async function handleStreamResponse<
     }
   };
 
+  const readLine = (line: string) => {
+    const trimmedLine = line.trim();
+    if (trimmedLine.length === 0) return;
+    try {
+      const parsedData = JSON.parse(trimmedLine) as T;
+      const text = parsedData.message?.content || parsedData.response || "";
+      streamState.fullResponse += text;
+      if (parsedData.done) streamState.stats = parsedData;
+    } catch {
+      // Partial JSON line or parse error
+    }
+  };
+
   responseStream.on("data", (chunk: Buffer) => {
     streamState.buffer += chunk.toString();
     const lines = streamState.buffer.split("\n");
     streamState.buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      if (trimmedLine.length === 0) continue;
-      try {
-        const parsedData = JSON.parse(trimmedLine) as T;
-        const text = parsedData.message?.content || parsedData.response || "";
-        streamState.fullResponse += text;
-      } catch {
-        // Partial JSON line or parse error
-      }
-    }
+    lines.forEach(readLine);
     void updateMessage();
   });
 
   try {
     await finished(responseStream);
   } catch (error) {
-    failed = true;
+    stopped = true;
     await streamState.editPromise.catch(() => undefined);
     throw error;
   }
-
-  if (streamState.buffer.trim().length > 0) {
-    try {
-      const parsedData = JSON.parse(streamState.buffer.trim()) as T;
-      const text = parsedData.message?.content || parsedData.response || "";
-      streamState.fullResponse += text;
-    } catch {
-      // Ignore
-    }
-  }
+  stopped = true;
+  readLine(streamState.buffer);
 
   const cleanText = streamState.fullResponse.trim() || "(No response)";
   await onComplete(cleanText);
-  await updateMessage(true);
+  await streamState.editPromise.catch(() => undefined);
 
-  const segments = splitText(cleanText, 2000);
-  if (segments.length > 1) {
-    try {
-      for (let i = 1; i < segments.length; i++) {
-        await interaction.followUp({
-          content: segments[i],
-          fetchReply: true,
-        });
-      }
-    } catch (err) {
-      logError(err);
-    }
+  try {
+    await replySplitInteraction(
+      interaction,
+      cleanText,
+      true,
+      statsComponents(streamState.stats),
+    );
+  } catch (err) {
+    logError(err);
   }
 }

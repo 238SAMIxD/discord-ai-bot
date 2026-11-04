@@ -225,7 +225,10 @@ test(
     assert.deepEqual(lastReply(clear), {
       content: "You have no conversation history to clear in this channel.",
     });
-    assert.deepEqual(lastReply(theirs), { content: "Their answer" });
+    assert.deepEqual(lastReply(theirs), {
+      content: "Their answer",
+      components: [],
+    });
     assert.deepEqual(getUserHistory("13", "2"), [
       { role: "user", content: "User 2: Their question" },
       { role: "assistant", content: "Their answer" },

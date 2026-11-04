@@ -1,7 +1,11 @@
 import { CommandInteraction, GuildMember, Message } from "discord.js";
 import axios from "axios";
 import type { ResponseType } from "axios";
-import type { BaseInteraction } from "discord.js";
+import type {
+  ActionRowBuilder,
+  BaseInteraction,
+  ButtonBuilder,
+} from "discord.js";
 
 export function splitText(str: string, length: number): string[] {
   str = str
@@ -166,14 +170,17 @@ export async function replySplitInteraction(
   interaction: CommandInteraction,
   content: string,
   defer?: boolean,
+  components: ActionRowBuilder<ButtonBuilder>[] = [],
 ): Promise<Message[]> {
   const responseMessages = splitText(content, 2000).map((text) => ({
     content: text,
+    components: [] as ActionRowBuilder<ButtonBuilder>[],
   }));
 
   if (responseMessages.length === 0) {
-    responseMessages.push({ content: "(No response)" });
+    responseMessages.push({ content: "(No response)", components: [] });
   }
+  responseMessages[responseMessages.length - 1].components = components;
 
   const replyMessages: Message[] = [];
   if (defer) {

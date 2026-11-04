@@ -4,10 +4,39 @@ import { PassThrough } from "node:stream";
 import { setImmediate, setTimeout as delay } from "node:timers/promises";
 import { handleStreamResponse } from "./stream.js";
 
-import type { ChatInputCommandInteraction } from "discord.js";
+import type {
+  ActionRowBuilder,
+  APIButtonComponentWithCustomId,
+  ButtonBuilder,
+  ChatInputCommandInteraction,
+} from "discord.js";
+
+interface FinalReply {
+  content: string;
+  components: ActionRowBuilder<ButtonBuilder>[];
+}
+
+process.env.TOKEN = "test-token";
+process.env.OLLAMA = "http://localhost:11434";
+process.env.SHOW_STATS = "true";
 
 function isPending(promise: Promise<unknown>, ms: number) {
   return Promise.race([promise.then(() => false), delay(ms, true)]);
+}
+
+function fakeInteraction() {
+  return {
+    editReply: mock.fn(async (_reply: string | FinalReply) => undefined),
+    followUp: mock.fn(async (_reply: FinalReply) => undefined),
+  };
+}
+
+function buttonLabels(reply: FinalReply | undefined) {
+  return reply?.components.map((row) =>
+    row.components.map(
+      (button) => (button.toJSON() as APIButtonComponentWithCustomId).label,
+    ),
+  );
 }
 
 test("handleStreamResponse saves the finished text before the final edit", async () => {
@@ -17,8 +46,8 @@ test("handleStreamResponse saves the finished text before the final edit", async
     edited = resolve;
   });
   const interaction = {
-    editReply: mock.fn(async (content: string) => {
-      events.push(`edit: ${content}`);
+    editReply: mock.fn(async (reply: string | FinalReply) => {
+      events.push(`edit: ${typeof reply === "string" ? reply : reply.content}`);
       edited();
     }),
     followUp: mock.fn(async () => undefined),
@@ -71,4 +100,63 @@ test("handleStreamResponse lets an edit in flight finish before it rejects", asy
   finishEdit();
   assert.equal(await outcome, "Stream failed");
   assert.equal(interaction.editReply.mock.callCount(), 1);
+});
+
+test("handleStreamResponse puts the stats from the last chunk on the final message", async () => {
+  const interaction = fakeInteraction();
+  const stream = new PassThrough();
+  const done = handleStreamResponse(
+    interaction as unknown as ChatInputCommandInteraction,
+    stream,
+    () => undefined,
+  );
+  stream.end(
+    [
+      JSON.stringify({ message: { content: "Hello" }, done: false }),
+      JSON.stringify({
+        model: "llama3.2:3b",
+        message: { content: "" },
+        done: true,
+        eval_count: 2,
+        eval_duration: 1_000_000_000,
+        total_duration: 1_500_000_000,
+      }),
+    ].join("\n"),
+  );
+  await done;
+
+  const final = interaction.editReply.mock.calls.at(-1)?.arguments[0];
+  assert.equal(typeof final === "string" ? final : final?.content, "Hello");
+  assert.deepEqual(buttonLabels(final as FinalReply), [
+    ["llama3.2:3b", "2 tokens", "2.0 tokens/s"],
+    ["1.5 s total"],
+  ]);
+  assert.equal(interaction.followUp.mock.callCount(), 0);
+});
+
+test("handleStreamResponse puts the stats buttons on the last message of a long answer", async () => {
+  const interaction = fakeInteraction();
+  const stream = new PassThrough();
+  const done = handleStreamResponse(
+    interaction as unknown as ChatInputCommandInteraction,
+    stream,
+    () => undefined,
+  );
+  const words = Array.from({ length: 500 }, (_, i) => `word${i}`).join(" ");
+  stream.end(
+    `${JSON.stringify({ response: words })}\n${JSON.stringify({
+      done: true,
+      eval_count: 500,
+      eval_duration: 2_000_000_000,
+    })}\n`,
+  );
+  await done;
+
+  const first = interaction.editReply.mock.calls.at(-1)?.arguments[0];
+  assert.deepEqual((first as FinalReply).components, []);
+  assert.equal(interaction.followUp.mock.callCount(), 1);
+  assert.deepEqual(
+    buttonLabels(interaction.followUp.mock.calls[0]?.arguments[0]),
+    [["500 tokens", "250.0 tokens/s"]],
+  );
 });

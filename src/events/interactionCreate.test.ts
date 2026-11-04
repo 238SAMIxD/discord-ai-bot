@@ -17,15 +17,21 @@ function chatCommand(): Required<BotCommand> {
   return command as Required<BotCommand>;
 }
 
-function fakeInteraction(type: "autocomplete" | "command", channelId: string) {
+function fakeInteraction(
+  type: "autocomplete" | "command" | "button",
+  channelId: string,
+  customId = "",
+) {
   return {
     commandName: "chat",
+    customId,
     channelId,
     channel: { parentId: null, isThread: () => false },
     deferred: false,
     replied: false,
     inGuild: () => true,
     isAutocomplete: () => type === "autocomplete",
+    isButton: () => type === "button",
     isChatInputCommand: () => type === "command",
     respond: mock.fn(),
     reply: mock.fn(),
@@ -85,4 +91,19 @@ test("interactionCreate runs autocomplete in an allowed channel", async (t) => {
   await event.execute(interaction as unknown as Interaction);
   assert.equal(autocomplete.mock.callCount(), 1);
   assert.equal(interaction.respond.mock.callCount(), 0);
+});
+
+test("interactionCreate answers a stats button with a private breakdown", async () => {
+  const interaction = fakeInteraction("button", "111", "stats:tokens:::2s:::");
+  await event.execute(interaction as unknown as Interaction);
+  assert.equal(interaction.reply.mock.callCount(), 1);
+  const [options] = interaction.reply.mock.calls[0]?.arguments ?? [];
+  assert.equal(options?.flags, MessageFlags.Ephemeral);
+  assert.equal(options?.embeds?.length, 1);
+});
+
+test("interactionCreate ignores buttons it does not own", async () => {
+  const interaction = fakeInteraction("button", "111", "other:button");
+  await event.execute(interaction as unknown as Interaction);
+  assert.equal(interaction.reply.mock.callCount(), 0);
 });

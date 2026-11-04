@@ -7,6 +7,7 @@ import { makeRequest, getModels, buildSystemMessage } from "../api/ollama.js";
 import { log, logError, LogLevel } from "../utils/logger.js";
 import { replySplitInteraction, speakerName } from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
+import { statsComponents } from "../utils/stats.js";
 import { getConfig } from "../config.js";
 import { BotCommand, OllamaChatResponse, OllamaChatRequest } from "../types.js";
 import {
@@ -125,7 +126,12 @@ const chat: BotCommand = {
 
         saveReply(responseText);
 
-        await replySplitInteraction(interaction, responseText, true);
+        await replySplitInteraction(
+          interaction,
+          responseText,
+          true,
+          statsComponents(response),
+        );
       } else {
         const responseStream = await makeRequest<
           NodeJS.ReadableStream,
