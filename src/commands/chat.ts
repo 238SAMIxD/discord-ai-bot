@@ -9,7 +9,7 @@ import { replySplitInteraction } from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
 import { getConfig } from "../config.js";
 import { BotCommand, OllamaChatResponse, OllamaChatRequest } from "../types.js";
-import { getChatHistory, addChatMessage } from "../state/conversations.js";
+import { getUserHistory, addToUserHistory } from "../state/conversations.js";
 
 const data = new SlashCommandBuilder()
   .setName("chat")
@@ -61,6 +61,7 @@ const chat: BotCommand = {
       const model = interaction.options.getString("model") ?? getConfig().model;
       const stream = interaction.options.getBoolean("stream") ?? false;
       const channelID = interaction.channelId ?? "";
+      const userID = interaction.user.id;
 
       const systemMessage = await buildSystemMessage(model);
       const messagesToSend: {
@@ -72,7 +73,7 @@ const chat: BotCommand = {
         messagesToSend.push({ role: "system", content: systemMessage });
       }
 
-      messagesToSend.push(...getChatHistory(channelID));
+      messagesToSend.push(...getUserHistory(channelID, userID));
       messagesToSend.push({ role: "user", content: prompt });
 
       const payload: OllamaChatRequest = {
@@ -89,8 +90,8 @@ const chat: BotCommand = {
         const responseText =
           response?.message?.content || "(No response from Ollama)";
 
-        addChatMessage(channelID, { role: "user", content: prompt });
-        addChatMessage(channelID, {
+        addToUserHistory(channelID, userID, { role: "user", content: prompt });
+        addToUserHistory(channelID, userID, {
           role: "assistant",
           content: responseText,
         });
@@ -106,8 +107,11 @@ const chat: BotCommand = {
           interaction,
           responseStream,
           (cleanText) => {
-            addChatMessage(channelID, { role: "user", content: prompt });
-            addChatMessage(channelID, {
+            addToUserHistory(channelID, userID, {
+              role: "user",
+              content: prompt,
+            });
+            addToUserHistory(channelID, userID, {
               role: "assistant",
               content: cleanText,
             });
