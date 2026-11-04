@@ -96,6 +96,10 @@ fail() {
   exit 1
 }
 
+# Parses the findings block in file $1 into $work/findings-parsed.json.
+# Several top-level arrays are merged, and plain-string entries become findings
+# with their first line as the title. Returns non-zero when the block is not
+# usable, for example when it holds a value that is not an array.
 normalize_findings() {
   jq -c -s '
     if length == 0 or any(.[]; type != "array") then error("the findings block is not a JSON array") else add end
@@ -120,6 +124,9 @@ normalize_findings() {
   ' "$1" > "$work/findings-parsed.json" 2> /dev/null && [[ -s "$work/findings-parsed.json" ]]
 }
 
+# Prints file $1 with the JSON mistakes free models often make fixed: bare and
+# single-quoted keys or strings, trailing commas, and raw control characters
+# inside strings. Text inside strings is otherwise left exactly as written.
 repair_json() {
   awk -v sq="'" '
     { text = text (NR > 1 ? "\n" : "") $0 }
@@ -173,6 +180,9 @@ repair_json() {
   ' "$1"
 }
 
+# Prints file $1 with a line break between top-level `},{` pairs, so a findings
+# block that could not be parsed is readable when shown as returned. Text inside
+# strings is not touched.
 split_raw_findings() {
   awk '
     { text = text (NR > 1 ? "\n" : "") $0 }
@@ -201,6 +211,10 @@ split_raw_findings() {
   ' "$1"
 }
 
+# Splits the model reply in $work/model.md into the Markdown part and the
+# findings block, then sets findings_state to none, valid or invalid. For a
+# valid block it writes $work/findings.json and the inline comment candidates
+# in $work/inline-comments.json, and drops any Findings section the model wrote.
 extract_findings() {
   : > "$work/findings-raw.txt"
   awk -v block="$work/findings-raw.txt" '
@@ -245,6 +259,9 @@ extract_findings() {
   jq -Rrs 'sub("^\\s+"; "") | sub("\\s+$"; "")' "$work/model-clean.md" > "$work/model.md"
 }
 
+# Builds the review comment body in $work/review.md. $1 is a JSON file that maps
+# finding indexes to inline comment URLs; mapped findings are listed by title
+# with a link, and the others keep their full explanation.
 compose_review() {
   local urls=$1
   if [[ "$findings_state" == "valid" ]]; then
