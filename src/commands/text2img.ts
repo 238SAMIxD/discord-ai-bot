@@ -4,6 +4,8 @@ import {
   MessageFlags,
 } from "discord.js";
 import { makeStableDiffusionRequest } from "../api/stableDiffusion.js";
+import { ServersBusyError } from "../api/base.js";
+import { BUSY_MESSAGE } from "../utils/helpers.js";
 import { logError } from "../utils/logger.js";
 import { createStopButton } from "../utils/stopButton.js";
 import { BotCommand, SDResponse, SDTxt2ImgRequest } from "../types.js";
@@ -94,7 +96,7 @@ const text2img: BotCommand = {
       const stableDiffusionResponse = await makeStableDiffusionRequest<
         SDResponse,
         SDTxt2ImgRequest
-      >("/sdapi/v1/txt2img", "post", payload, stop.signal);
+      >("/sdapi/v1/txt2img", "post", payload, stop.signal, stop.queueStatus);
       stop.complete();
       const images = (stableDiffusionResponse?.images ?? []).map((image) =>
         Buffer.from(image, "base64"),
@@ -112,7 +114,10 @@ const text2img: BotCommand = {
       logError(error);
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply({
-          content: "Error, please check the console",
+          content:
+            error instanceof ServersBusyError
+              ? BUSY_MESSAGE
+              : "Error, please check the console",
           components: [],
         });
       } else {

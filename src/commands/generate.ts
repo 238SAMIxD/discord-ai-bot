@@ -2,15 +2,26 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   AutocompleteInteraction,
+  MessageFlags,
 } from "discord.js";
 import { makeRequest, getModels, buildSystemMessage } from "../api/ollama.js";
+import { ServersBusyError } from "../api/base.js";
 import { logError } from "../utils/logger.js";
-import { replySplitInteraction, downloadAttachment } from "../utils/helpers.js";
+import {
+  replySplitInteraction,
+  downloadAttachment,
+  BUSY_MESSAGE,
+} from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
 import { statsComponents } from "../utils/stats.js";
 import { extractTextFromPDF } from "../utils/pdf.js";
 import { createStopButton } from "../utils/stopButton.js";
 import { buildBotContext } from "../utils/botContext.js";
+import {
+  finishSlowmode,
+  slowmodeMessage,
+  tryStartSlowmode,
+} from "../state/slowmode.js";
 import { getConfig } from "../config.js";
 import {
   BotCommand,
@@ -71,6 +82,14 @@ const generate: BotCommand = {
     }
   },
   async execute(interaction: ChatInputCommandInteraction) {
+    const waitLeft = tryStartSlowmode(interaction.user.id);
+    if (waitLeft > 0) {
+      await interaction.reply({
+        content: slowmodeMessage(waitLeft),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     const stop = createStopButton(interaction);
     let stoppedPartway = false;
     try {
@@ -195,6 +214,7 @@ const generate: BotCommand = {
         model,
         stop.signal,
         await buildBotContext(interaction),
+        stop.queueStatus,
       );
 
       const payload: OllamaGenerateRequest = {
@@ -214,7 +234,14 @@ const generate: BotCommand = {
         const response = await makeRequest<
           OllamaGenerateResponse,
           OllamaGenerateRequest
-        >("/api/generate", "post", payload, "json", stop.signal);
+        >(
+          "/api/generate",
+          "post",
+          payload,
+          "json",
+          stop.signal,
+          stop.queueStatus,
+        );
         stop.complete();
         const responseText = response?.response || "(No response from Ollama)";
 
@@ -228,7 +255,14 @@ const generate: BotCommand = {
         const responseStream = await makeRequest<
           NodeJS.ReadableStream,
           OllamaGenerateRequest
-        >("/api/generate", "post", payload, "stream", stop.signal);
+        >(
+          "/api/generate",
+          "post",
+          payload,
+          "stream",
+          stop.signal,
+          stop.queueStatus,
+        );
 
         stoppedPartway = await handleStreamResponse<OllamaGenerateResponse>(
           interaction,
@@ -240,6 +274,11 @@ const generate: BotCommand = {
     } catch (error) {
       if (stop.signal.aborted) {
         await interaction.editReply({ content: "Stopped." });
+      } else if (error instanceof ServersBusyError) {
+        await interaction.editReply({
+          content: BUSY_MESSAGE,
+          components: [],
+        });
       } else {
         logError(error);
         await interaction.editReply({
@@ -248,6 +287,7 @@ const generate: BotCommand = {
         });
       }
     } finally {
+      finishSlowmode(interaction.user.id);
       await stop.finish(stoppedPartway);
     }
   },

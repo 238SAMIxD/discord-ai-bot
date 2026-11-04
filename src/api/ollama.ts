@@ -1,6 +1,10 @@
 import axios from "axios";
 import { getConfig } from "../config.js";
-import { makeBaseRequest, type HttpMethod } from "./base.js";
+import {
+  makeBaseRequest,
+  type HttpMethod,
+  type QueueListener,
+} from "./base.js";
 import { log, LogLevel } from "../utils/logger.js";
 
 import type { OllamaShowRequest, OllamaShowResponse } from "../types.js";
@@ -21,17 +25,22 @@ export async function makeRequest<TResponse, TRequest = object>(
   responseType:
     "arraybuffer" | "blob" | "document" | "json" | "text" | "stream" = "json",
   signal?: AbortSignal,
+  onQueue?: QueueListener,
 ): Promise<TResponse> {
+  const config = getConfig();
   return makeBaseRequest<TResponse, TRequest>(
-    getConfig().servers,
+    config.servers,
     path,
     method,
     data,
-    responseType,
-    getConfig().requestTimeout,
-    getConfig().serverWaitTimeout,
-    getConfig().streamIdleTimeout,
-    signal,
+    {
+      responseType,
+      timeoutMs: config.requestTimeout,
+      waitTimeoutMs: config.serverWaitTimeout,
+      streamIdleTimeoutMs: config.streamIdleTimeout,
+      signal,
+      onQueue,
+    },
   );
 }
 
@@ -40,6 +49,7 @@ const modelSystemMessages = new Map<string, string | null>();
 async function getModelSystemMessage(
   model: string,
   signal?: AbortSignal,
+  onQueue?: QueueListener,
 ): Promise<string | null> {
   const cached = modelSystemMessages.get(model);
   if (cached !== undefined) return cached;
@@ -50,6 +60,7 @@ async function getModelSystemMessage(
     { name: model },
     "json",
     signal,
+    onQueue,
   );
   const system = info?.system ?? null;
   modelSystemMessages.set(model, system);
@@ -60,13 +71,18 @@ export async function buildSystemMessage(
   model: string,
   signal?: AbortSignal,
   botContext = "",
+  onQueue?: QueueListener,
 ): Promise<string> {
   const config = getConfig();
   const systemMessages: string[] = [];
 
   if (config.useModelSystemMessage) {
     try {
-      const modelSystemMessage = await getModelSystemMessage(model, signal);
+      const modelSystemMessage = await getModelSystemMessage(
+        model,
+        signal,
+        onQueue,
+      );
       if (modelSystemMessage) systemMessages.push(modelSystemMessage);
     } catch (e) {
       log.log(

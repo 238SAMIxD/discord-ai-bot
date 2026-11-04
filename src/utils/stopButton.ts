@@ -14,6 +14,7 @@ import type {
 export interface StopButton {
   signal: AbortSignal;
   show(): Promise<void>;
+  queueStatus(ahead: number | null): void;
   complete(): void;
   finish(markStopped?: boolean): Promise<void>;
 }
@@ -26,6 +27,12 @@ interface RunningRequest {
 const STOP_PREFIX = "stop:";
 
 const running = new Map<string, RunningRequest>();
+
+function queueMessage(ahead: number | null): string {
+  if (ahead === null) return "Generating…";
+  if (ahead === 0) return "Waiting for the current answer to finish…";
+  return `Waiting in line: ${ahead} request${ahead === 1 ? "" : "s"} ahead of you…`;
+}
 
 function stopButtonRow(interactionId: string, stopped: boolean) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -54,6 +61,15 @@ export function createStopButton(
         components: [stopButtonRow(interaction.id, false)],
       });
       shown = true;
+    },
+    queueStatus(ahead) {
+      if (!shown || completed) return;
+      interaction
+        .editReply({
+          content: queueMessage(ahead),
+          components: [stopButtonRow(interaction.id, false)],
+        })
+        .catch(logError);
     },
     complete() {
       running.delete(interaction.id);

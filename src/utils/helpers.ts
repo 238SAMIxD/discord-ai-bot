@@ -7,6 +7,9 @@ import type {
   ButtonBuilder,
 } from "discord.js";
 
+export const BUSY_MESSAGE =
+  "The bot is busy answering other requests. Try again in a moment.";
+
 export function splitText(str: string, length: number): string[] {
   str = str
     .replace(/\r\n/g, "\n")
