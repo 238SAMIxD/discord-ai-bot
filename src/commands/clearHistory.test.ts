@@ -163,7 +163,7 @@ test(
 
     assert.deepEqual(lastReply(clear), {
       content:
-        "Cleared your conversation history (1 chat) and 1 pending message in this channel.",
+        "Cleared your conversation history (1 message) and 1 pending message in this channel.",
     });
     assert.deepEqual(lastReply(queuedInteraction), CANCELLED);
     assert.deepEqual(getUserHistory("10", USER), []);
