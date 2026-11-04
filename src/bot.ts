@@ -1,21 +1,12 @@
-import { Client, GatewayIntentBits, Partials } from "discord.js";
+import { Client } from "discord.js";
 import { log, setLogger, Logger, LogLevel } from "./utils/logger.js";
 import type { ShardMessage } from "./types.js";
 import { getConfig } from "./config.js";
+import { clientOptions } from "./clientOptions.js";
 import { registerEvents } from "./events/index.js";
 import { closeChatHistory, openChatHistory } from "./state/conversations.js";
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.DirectMessages,
-    GatewayIntentBits.MessageContent,
-  ],
-  allowedMentions: { users: [], roles: [], repliedUser: false },
-  partials: [Partials.Channel],
-});
+const client = new Client(clientOptions);
 
 process.on("message", (data: ShardMessage) => {
   if (!data || typeof data !== "object") return;

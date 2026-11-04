@@ -13,9 +13,7 @@
 3. Pull (download) a model, e.g `ollama pull orca` or `ollama pull llama2`
 4. Start Ollama by running `ollama serve`
 5. [Create a Discord bot](https://discord.com/developers/applications)
-   - Under Application » Bot
-     - Enable Message Content Intent
-     - Enable Server Members Intent (for replacing user mentions with the username)
+   - The bot only uses slash commands, so you don't need to enable any privileged gateway intents under Application » Bot
 6. Invite the bot to a server
    1. Go to Application » OAuth2 » URL Generator
    2. Enable `bot`
@@ -36,18 +34,21 @@
    - `/chat` and `/generate` answers end with buttons showing Ollama's stats for that answer: the model, response tokens, generation speed, prompt tokens, model load time and total time. Clicking one shows a breakdown only you can see. Set `SHOW_STATS=false` to hide the buttons
 8. Install the required dependencies with `pnpm i`
 9. Start the bot with `pnpm start`
-10. You can interact with the bot by @mentioning it with your message
+10. You can interact with the bot with its slash commands: `/chat`, `/generate`, `/text2img`, `/models` and `/clearhistory`
 11. Install <a href="https://github.com/AUTOMATIC1111/stable-diffusion-webui">Stable Diffusion</a>
 12. Run the script `./webui.sh --api --listen`
 
 ### Set-up instructions with Docker
 
 1. Install [Docker](https://docs.docker.com/get-docker/)
-   - Should be atleast compatible with version 3 of compose (docker engine 1.13.0+)
+   - You need Docker Engine 20.10 or newer with Docker Compose v2
 2. Repeat steps 2—7 from the other setup instructions
+   - The compose file sets `OLLAMA` to `http://host.docker.internal:11434`, which points the container at the Ollama running on your computer
+   - On Linux, Ollama only listens on `127.0.0.1` by default, so the container can't reach it. Start it with `OLLAMA_HOST=0.0.0.0 ollama serve`, or, if Ollama runs as a systemd service, run `sudo systemctl edit ollama`, add `Environment="OLLAMA_HOST=0.0.0.0"` under `[Service]` and restart it. Docker Desktop on Windows and macOS doesn't need this
+   - For `/text2img`, set `STABLE_DIFFUSION=http://host.docker.internal:7860` in `.env`, because `localhost` inside the container is the container itself
 3. Start the bot with `make compose-up` if you have Make installed
    - Otherwise, try `docker compose -p discord-ai up` instead
-4. You can interact with the bot by @mentioning it with your message
+4. You can interact with the bot with its slash commands: `/chat`, `/generate`, `/text2img`, `/models` and `/clearhistory`
 5. `/chat` history is stored in the `chat-history` volume mounted at `/app/data`, so it survives restarts, rebuilds and `make compose-down`
    - Keep `CHAT_HISTORY_DB` inside `./data` (the default) so the database is saved in that volume
    - To delete the stored history, run `docker compose -p discord-ai down -v`
