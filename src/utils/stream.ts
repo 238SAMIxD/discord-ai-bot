@@ -74,17 +74,10 @@ export async function handleStreamResponse<
     void updateMessage();
   });
 
-  let stopped = false;
-  try {
-    await finished(responseStream);
-  } catch (error) {
-    if (!stopSignal?.aborted || !streamState.fullResponse.trim()) {
-      failed = true;
-      await streamState.editPromise.catch(() => undefined);
-      throw error;
-    }
-    stopped = true;
-  }
+  const failure = await finished(responseStream).then(
+    () => undefined,
+    (error: unknown) => ({ error }),
+  );
 
   if (streamState.buffer.trim().length > 0) {
     try {
@@ -94,6 +87,16 @@ export async function handleStreamResponse<
     } catch {
       // Ignore
     }
+  }
+
+  const stopped =
+    failure !== undefined &&
+    stopSignal?.aborted === true &&
+    streamState.fullResponse.trim().length > 0;
+  if (failure && !stopped) {
+    failed = true;
+    await streamState.editPromise.catch(() => undefined);
+    throw failure.error;
   }
 
   const cleanText = streamState.fullResponse.trim() || "(No response)";

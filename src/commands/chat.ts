@@ -117,6 +117,7 @@ const chat: BotCommand = {
 
       const saveReply = (reply: string) => {
         removePendingChat(channelID, userID, pending);
+        stop.complete();
         saveExchange(channelID, userID, turn, content, reply);
       };
 

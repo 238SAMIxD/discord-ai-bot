@@ -110,6 +110,20 @@ test("handleStreamResponse keeps the text so far without saving it once stopped"
   ]);
 });
 
+test("handleStreamResponse keeps a last chunk that arrived without a newline once stopped", async () => {
+  const { saved, interaction, stream, outcome, stopStream } = stoppableStream();
+
+  stream.write(JSON.stringify({ message: { content: "Hello" } }));
+  await setImmediate();
+  stopStream();
+
+  assert.equal(await outcome, true);
+  assert.deepEqual(saved, []);
+  assert.deepEqual(interaction.editReply.mock.calls.at(-1)?.arguments, [
+    "Hello",
+  ]);
+});
+
 test("handleStreamResponse posts the rest of a long stopped reply as follow-ups", async () => {
   const { interaction, stream, outcome, stopStream } = stoppableStream();
   const text = "Hello ".repeat(400).trim();

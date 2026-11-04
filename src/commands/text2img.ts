@@ -95,6 +95,7 @@ const text2img: BotCommand = {
         SDResponse,
         SDTxt2ImgRequest
       >("/sdapi/v1/txt2img", "post", payload, stop.signal);
+      stop.complete();
       const images = (stableDiffusionResponse?.images ?? []).map((image) =>
         Buffer.from(image, "base64"),
       );

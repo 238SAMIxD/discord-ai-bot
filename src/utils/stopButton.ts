@@ -14,6 +14,7 @@ import type {
 export interface StopButton {
   signal: AbortSignal;
   show(): Promise<void>;
+  complete(): void;
   finish(markStopped?: boolean): Promise<void>;
 }
 
@@ -52,6 +53,9 @@ export function createStopButton(
         components: [stopButtonRow(interaction.id, false)],
       });
       shown = true;
+    },
+    complete() {
+      running.delete(interaction.id);
     },
     async finish(markStopped = false) {
       running.delete(interaction.id);

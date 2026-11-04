@@ -26,6 +26,7 @@ import type { BotCommand } from "../types.js";
 
 interface HeldRequest {
   path: string;
+  taskId?: string;
   closed: Promise<unknown>;
   write(content: string): void;
   answer(body: object): void;
@@ -55,19 +56,32 @@ process.env.USE_MODEL_SYSTEM = "false";
 before(() => openChatHistory(":memory:"));
 after(() => closeChatHistory());
 
-async function startFakeServer(t: TestContext) {
+async function startFakeServer(t: TestContext, imagesStart = true) {
   const received = new EventEmitter();
   const interrupts: string[] = [];
+  const progressChecks: string[] = [];
+  const images = new Map<string, HeldRequest>();
 
   const server = createServer(async (req, res) => {
     const body = await text(req);
     if (req.url === "/sdapi/v1/interrupt") {
       interrupts.push(req.url);
       res.end();
+      for (const image of [...images.values()]) image.answer({ images: [] });
+      return;
+    }
+    if (req.url === "/internal/progress") {
+      const { id_task } = JSON.parse(body) as { id_task: string };
+      progressChecks.push(id_task);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ active: imagesStart && images.has(id_task) }));
       return;
     }
 
-    const { stream } = JSON.parse(body) as { stream?: boolean };
+    const { stream, force_task_id: taskId } = JSON.parse(body) as {
+      stream?: boolean;
+      force_task_id?: string;
+    };
     const closed = once(res, "close");
     if (stream) {
       res.writeHead(200, { "Content-Type": "application/x-ndjson" });
@@ -78,17 +92,20 @@ async function startFakeServer(t: TestContext) {
 
     const held: HeldRequest = {
       path: req.url ?? "",
+      taskId,
       closed,
       write(content) {
         res.write(JSON.stringify({ message: { content }, done: false }) + "\n");
       },
       answer(reply) {
+        if (taskId) images.delete(taskId);
         if (!stream) {
           res.writeHead(200, { "Content-Type": "application/json" });
         }
         res.end(JSON.stringify(reply) + "\n");
       },
     };
+    if (taskId) images.set(taskId, held);
     received.emit("request", held);
   });
 
@@ -106,9 +123,14 @@ async function startFakeServer(t: TestContext) {
 
   return {
     interrupts,
+    progressChecks,
     nextRequest: async () =>
       (await once(received, "request"))[0] as HeldRequest,
   };
+}
+
+async function waitUntil(check: () => boolean) {
+  while (!check()) await delay(5);
 }
 
 let interactionCount = 0;
@@ -253,6 +275,20 @@ test("handleStopButton refuses anyone else", async () => {
   await stop.finish();
 });
 
+test("handleStopButton treats a request whose answer arrived as no longer running", async () => {
+  const interaction = fakeCommand();
+  const stop = startStop(interaction);
+  await stop.show();
+  stop.complete();
+
+  const button = await click(interaction);
+
+  assert.equal(stop.signal.aborted, false);
+  assert.equal(button.deferUpdate.mock.callCount(), 0);
+  assert.equal(button.reply.mock.callCount(), 1);
+  await stop.finish();
+});
+
 test("handleStopButton says when the response is no longer running", async () => {
   const interaction = fakeCommand();
   const stop = startStop(interaction);
@@ -358,7 +394,7 @@ test("stopping /generate closes its request", options, async (t) => {
 });
 
 test(
-  "stopping /text2img interrupts the Stable Diffusion server running it",
+  "stopping /text2img interrupts its own image and keeps the server busy until it ends",
   options,
   async (t) => {
     const server = await startFakeServer(t);
@@ -370,11 +406,72 @@ test(
     await click(interaction);
     await running;
     await held.closed;
+    await waitUntil(() => getConfig().stableDiffusionServers[0].available);
 
     assert.equal(held.path, "/sdapi/v1/txt2img");
+    assert.equal(typeof held.taskId, "string");
+    assert.deepEqual(server.progressChecks, [held.taskId]);
     assert.deepEqual(server.interrupts, ["/sdapi/v1/interrupt"]);
     assert.equal(lastContent(interaction), "Stopped.");
     assert.deepEqual(lastButtons(interaction), []);
-    assert.equal(getConfig().stableDiffusionServers[0].available, true);
+  },
+);
+
+test(
+  "stopping /text2img leaves an image Stable Diffusion hasn't started alone",
+  options,
+  async (t) => {
+    const server = await startFakeServer(t, false);
+    const request = server.nextRequest();
+    const interaction = fakeCommand({ prompt: "A blue fox" });
+    const running = run(text2img, interaction);
+    const held = await request;
+
+    await click(interaction);
+    await running;
+    await waitUntil(() => server.progressChecks.length === 1);
+    await delay(50);
+
+    assert.equal(lastContent(interaction), "Stopped.");
+    assert.deepEqual(server.interrupts, []);
+    assert.equal(getConfig().stableDiffusionServers[0].available, false);
+
+    held.answer({ images: [] });
+    await waitUntil(() => getConfig().stableDiffusionServers[0].available);
+  },
+);
+
+test(
+  "a click after /chat has its answer doesn't turn a failed reply into Stopped.",
+  options,
+  async (t) => {
+    const server = await startFakeServer(t);
+    const request = server.nextRequest();
+    const interaction = fakeCommand({ prompt: "Question" });
+    const lateClicks: Awaited<ReturnType<typeof click>>[] = [];
+    interaction.editReply.mock.mockImplementation(async (reply: unknown) => {
+      if ((reply as { content?: string }).content === "Answer") {
+        lateClicks.push(await click(interaction));
+        throw new Error("Discord is down");
+      }
+      return {};
+    });
+    const running = run(chat, interaction);
+    const held = await request;
+
+    held.answer({ message: { role: "assistant", content: "Answer" } });
+    await running;
+
+    assert.deepEqual(lateClicks[0]?.reply.mock.calls[0]?.arguments, [
+      {
+        content: "This response is no longer running.",
+        flags: MessageFlags.Ephemeral,
+      },
+    ]);
+    assert.equal(lastContent(interaction), "Failed to run chat.");
+    assert.deepEqual(getUserHistory(interaction.channelId, OWNER), [
+      { role: "user", content: `User ${OWNER}: Question` },
+      { role: "assistant", content: "Answer" },
+    ]);
   },
 );

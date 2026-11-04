@@ -160,6 +160,7 @@ const generate: BotCommand = {
             );
             let text = await extractTextFromPDF(
               Buffer.from(res.data as ArrayBuffer),
+              stop.signal,
             );
             if (text.length > getConfig().maxAttachmentTextLength) {
               text =
@@ -208,6 +209,7 @@ const generate: BotCommand = {
           OllamaGenerateResponse,
           OllamaGenerateRequest
         >("/api/generate", "post", payload, "json", stop.signal);
+        stop.complete();
         const responseText = response?.response || "(No response from Ollama)";
 
         await replySplitInteraction(interaction, responseText, true);
@@ -220,9 +222,7 @@ const generate: BotCommand = {
         stoppedPartway = await handleStreamResponse<OllamaGenerateResponse>(
           interaction,
           responseStream,
-          () => {
-            /* no history tracking for /generate */
-          },
+          () => stop.complete(),
           stop.signal,
         );
       }

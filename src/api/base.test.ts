@@ -395,7 +395,9 @@ test("makeBaseRequest closes its stream and releases the server once its signal 
 
 async function startHeldServer(t: TestContext) {
   const requests = new EventEmitter();
-  const server = createServer(() => {
+  const held: ServerResponse[] = [];
+  const server = createServer((_req, res) => {
+    held.push(res);
     requests.emit("request");
   });
 
@@ -409,41 +411,81 @@ async function startHeldServer(t: TestContext) {
   return {
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     nextRequest: () => once(requests, "request"),
+    answer: () => {
+      for (const res of held.splice(0)) res.end("{}");
+    },
   };
 }
 
-test("makeBaseRequest runs onAbort while it still holds the server, then releases it", async (t) => {
-  const held = await startHeldServer(t);
-  const servers: Server[] = [{ url: held.url, available: true }];
-  const controller = new AbortController();
-  const heldDuringAbort: boolean[] = [];
-
-  const received = held.nextRequest();
-  const reply = makeBaseRequest(
+function txt2img(
+  servers: Server[],
+  waitTimeoutMs = 0,
+  signal?: AbortSignal,
+  interrupt?: (server: Server) => Promise<unknown>,
+) {
+  return makeBaseRequest<object>(
     servers,
     "/sdapi/v1/txt2img",
     "post",
     {},
     "json",
     0,
+    waitTimeoutMs,
     0,
-    0,
-    controller.signal,
-    async (server) => {
-      heldDuringAbort.push(server === servers[0] && !server.available);
-    },
+    signal,
+    interrupt,
   );
+}
+
+test("makeBaseRequest without an interrupt cancels an aborted request and frees its server", async (t) => {
+  const held = await startHeldServer(t);
+  const servers: Server[] = [{ url: held.url, available: true }];
+  const controller = new AbortController();
+
+  const received = held.nextRequest();
+  const reply = txt2img(servers, 0, controller.signal);
   await received;
   controller.abort();
 
   await assert.rejects(reply, { name: "AbortError" });
-  assert.deepEqual(heldDuringAbort, [true]);
   assert.equal(servers[0].available, true);
 });
 
-test("makeBaseRequest doesn't run onAbort when a request fails without being aborted", async (t) => {
+test(
+  "makeBaseRequest with an interrupt leaves an aborted request running and keeps its server until it ends",
+  { timeout: 5_000 },
+  async (t) => {
+    const held = await startHeldServer(t);
+    const servers: Server[] = [{ url: held.url, available: true }];
+    const controller = new AbortController();
+    const interrupted: Server[] = [];
+
+    const received = held.nextRequest();
+    const reply = txt2img(servers, 0, controller.signal, (server) => {
+      interrupted.push(server);
+      return new Promise(() => undefined);
+    });
+    await received;
+    controller.abort();
+
+    await assert.rejects(reply, { name: "AbortError" });
+    assert.deepEqual(interrupted, [servers[0]]);
+    assert.equal(servers[0].available, false);
+
+    const nextReceived = held.nextRequest();
+    const next = txt2img(servers, 1_000);
+    assert.equal(await isPending(nextReceived, 50), true);
+
+    held.answer();
+    await nextReceived;
+    held.answer();
+    assert.deepEqual(await next, {});
+  },
+);
+
+test("makeBaseRequest doesn't interrupt a request that fails without being aborted", async (t) => {
   const a = await startFakeOllama(t, "A", 500);
-  const onAbort = t.mock.fn(async () => undefined);
+  const interrupt = t.mock.fn(async () => undefined);
 
   await assert.rejects(
     makeBaseRequest(
@@ -456,11 +498,11 @@ test("makeBaseRequest doesn't run onAbort when a request fails without being abo
       0,
       0,
       new AbortController().signal,
-      onAbort,
+      interrupt,
     ),
     { name: "AxiosError", status: 500 },
   );
-  assert.equal(onAbort.mock.callCount(), 0);
+  assert.equal(interrupt.mock.callCount(), 0);
 });
 
 test(
