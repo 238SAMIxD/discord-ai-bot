@@ -96,6 +96,74 @@ fail() {
   exit 1
 }
 
+normalize_findings() {
+  jq -c '
+    if type != "array" then error("the findings block is not an array") else . end
+    | map(select(type == "object"))
+    | to_entries
+    | map(.key as $index | .value | {
+        index: $index,
+        severity: ((.severity // "note") | tostring | ascii_downcase | gsub("[^a-z]"; "") | if . == "" then "note" else . end),
+        title: ((.title // "Finding") | tostring | gsub("[\\r\\n]+"; " ") | .[0:200]),
+        body: ((.body // "") | tostring | .[0:4000]),
+        path: (if (.path | type) == "string" and .path != "" then .path else null end),
+        line: ((.line | if type == "string" then (tonumber? // null) else . end)
+          | if type == "number" and . == floor and . > 0 then . else null end)
+      })
+  ' "$1" > "$work/findings-parsed.json" 2> /dev/null && [[ -s "$work/findings-parsed.json" ]]
+}
+
+repair_json() {
+  awk -v sq="'" '
+    { text = text (NR > 1 ? "\n" : "") $0 }
+    END {
+      n = length(text)
+      prev = ""
+      in_string = 0
+      quote = ""
+      for (i = 1; i <= n; i++) {
+        c = substr(text, i, 1)
+        if (in_string) {
+          if (c == "\\") {
+            d = substr(text, i + 1, 1)
+            if (quote == sq && d == sq) printf "%s", sq
+            else printf "%s%s", c, d
+            i++
+          }
+          else if (c == quote) { printf "\""; in_string = 0; prev = "\"" }
+          else if (c == "\"") printf "\\\""
+          else if (c == "\n") printf "\\n"
+          else if (c == "\t") printf "\\t"
+          else if (c != "\r") printf "%s", c
+          continue
+        }
+        if (c == "\"" || c == sq) { printf "\""; in_string = 1; quote = c; continue }
+        if (c == ",") {
+          j = i + 1
+          while (j <= n && substr(text, j, 1) ~ /[ \t\r\n]/) j++
+          d = substr(text, j, 1)
+          if (d == "}" || d == "]") continue
+        }
+        if (c ~ /[A-Za-z_]/ && (prev == "{" || prev == ",")) {
+          j = i
+          while (j <= n && substr(text, j, 1) ~ /[A-Za-z0-9_]/) j++
+          k = j
+          while (k <= n && substr(text, k, 1) ~ /[ \t\r\n]/) k++
+          if (substr(text, k, 1) == ":") {
+            printf "\"%s\"", substr(text, i, j - i)
+            prev = "\""
+            i = j - 1
+            continue
+          }
+        }
+        printf "%s", c
+        if (c !~ /[ \t\r\n]/) prev = c
+      }
+      printf "\n"
+    }
+  ' "$1"
+}
+
 extract_findings() {
   : > "$work/findings-raw.txt"
   awk -v block="$work/findings-raw.txt" '
@@ -108,20 +176,11 @@ extract_findings() {
   echo "[]" > "$work/inline-comments.json"
   if [[ ! -s "$work/findings-raw.txt" ]]; then
     findings_state="none"
-  elif jq -c '
-      if type != "array" then error("the findings block is not an array") else . end
-      | map(select(type == "object"))
-      | to_entries
-      | map(.key as $index | .value | {
-          index: $index,
-          severity: ((.severity // "note") | tostring | ascii_downcase | gsub("[^a-z]"; "") | if . == "" then "note" else . end),
-          title: ((.title // "Finding") | tostring | gsub("[\\r\\n]+"; " ") | .[0:200]),
-          body: ((.body // "") | tostring | .[0:4000]),
-          path: (if (.path | type) == "string" and .path != "" then .path else null end),
-          line: ((.line | if type == "string" then (tonumber? // null) else . end)
-            | if type == "number" and . == floor and . > 0 then . else null end)
-        })
-    ' "$work/findings-raw.txt" > "$work/findings-parsed.json" 2> /dev/null && [[ -s "$work/findings-parsed.json" ]]; then
+  elif normalize_findings "$work/findings-raw.txt" || {
+      repair_json "$work/findings-raw.txt" > "$work/findings-repaired.txt" \
+        && normalize_findings "$work/findings-repaired.txt" \
+        && echo "::notice::The findings block from the model was not strict JSON and was repaired before parsing."
+    }; then
     mv "$work/findings-parsed.json" "$work/findings.json"
     findings_state="valid"
     awk "$heading_awk"'
@@ -188,7 +247,7 @@ compose_review() {
     {
       cat "$work/model.md"
       printf '\n**Findings**: the model returned them in a format the bot could not read, so they are shown as returned.\n\n<details>\n<summary>Findings as returned</summary>\n\n````\n'
-      cat "$work/findings-raw.txt"
+      awk '{ gsub(/\}[ \t]*,[ \t]*\{/, "},\n{"); print }' "$work/findings-raw.txt"
       printf '````\n\n</details>\n'
     } > "$work/review-body.md"
   else
