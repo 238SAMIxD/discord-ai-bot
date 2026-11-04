@@ -38,6 +38,26 @@ const data = new SlashCommandBuilder()
       .setRequired(false),
   );
 
+function saveExchange(
+  channelID: string,
+  userID: string,
+  turn: number,
+  content: string,
+  reply: string,
+): void {
+  try {
+    addToUserHistory(
+      channelID,
+      userID,
+      turn,
+      { role: "user", content },
+      { role: "assistant", content: reply },
+    );
+  } catch (error) {
+    logError(error);
+  }
+}
+
 const chat: BotCommand = {
   data,
   async autocomplete(interaction: AutocompleteInteraction) {
@@ -96,13 +116,7 @@ const chat: BotCommand = {
         const responseText =
           response?.message?.content || "(No response from Ollama)";
 
-        addToUserHistory(
-          channelID,
-          userID,
-          turn,
-          { role: "user", content },
-          { role: "assistant", content: responseText },
-        );
+        saveExchange(channelID, userID, turn, content, responseText);
 
         await replySplitInteraction(interaction, responseText, true);
       } else {
@@ -114,15 +128,8 @@ const chat: BotCommand = {
         handleStreamResponse<OllamaChatResponse>(
           interaction,
           responseStream,
-          (cleanText) => {
-            addToUserHistory(
-              channelID,
-              userID,
-              turn,
-              { role: "user", content },
-              { role: "assistant", content: cleanText },
-            );
-          },
+          (cleanText) =>
+            saveExchange(channelID, userID, turn, content, cleanText),
         );
       }
     } catch (error) {

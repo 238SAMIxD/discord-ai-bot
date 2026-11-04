@@ -7,7 +7,7 @@
 ### Set-up instructions
 
 1. Install [Node.js](https://nodejs.org) (if you have a package manager, use that instead to install this)
-   - Make sure to install at least v22 of Node.js
+   - Make sure to install at least v22.13 of Node.js
    - Install [pnpm](https://pnpm.io/installation) v12 or newer, it switches to the version pinned in `package.json` automatically
 2. Install [Ollama](https://github.com/jmorganca/ollama) (ditto)
 3. Pull (download) a model, e.g `ollama pull orca` or `ollama pull llama2`
@@ -31,6 +31,7 @@
      2. Right click on a channel you want to use, and click Copy Channel ID
    - You can edit the system message the bot uses, or disable it entirely
    - `/chat` sends each prompt as `Name: prompt`, using the sender's server nickname or display name, so the model knows who is talking
+   - `/chat` history is saved in an SQLite database at `CHAT_HISTORY_DB` (default `./data/chat-history.db`, relative to the folder you start the bot from), so conversations survive restarts. Each user has their own history in each channel, limited to their last 50 messages, and `/clearhistory` deletes yours in the current channel
 8. Install the required dependencies with `pnpm i`
 9. Start the bot with `pnpm start`
 10. You can interact with the bot by @mentioning it with your message
@@ -45,6 +46,9 @@
 3. Start the bot with `make compose-up` if you have Make installed
    - Otherwise, try `docker compose -p discord-ai up` instead
 4. You can interact with the bot by @mentioning it with your message
+5. `/chat` history is stored in the `chat-history` volume mounted at `/app/data`, so it survives restarts, rebuilds and `make compose-down`
+   - Keep `CHAT_HISTORY_DB` inside `./data` (the default) so the database is saved in that volume
+   - To delete the stored history, run `docker compose -p discord-ai down -v`
 
 ### Contributing / CI
 

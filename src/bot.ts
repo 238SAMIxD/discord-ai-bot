@@ -3,6 +3,7 @@ import { log, setLogger, Logger, LogLevel } from "./utils/logger.js";
 import type { ShardMessage } from "./types.js";
 import { getConfig } from "./config.js";
 import { registerEvents } from "./events/index.js";
+import { closeChatHistory, openChatHistory } from "./state/conversations.js";
 
 const client = new Client({
   intents: [
@@ -24,7 +25,24 @@ process.on("message", (data: ShardMessage) => {
 
 registerEvents(client);
 
-void client.login(getConfig().token).catch((error) => {
+const config = getConfig();
+
+try {
+  openChatHistory(config.chatHistoryDb);
+} catch (error) {
+  log.log(LogLevel.Error, "Failed to open the chat history database", error);
+  process.exit(1);
+}
+
+function shutdown(): void {
+  closeChatHistory();
+  process.exit(0);
+}
+
+process.once("SIGINT", shutdown);
+process.once("SIGTERM", shutdown);
+
+void client.login(config.token).catch((error) => {
   log.log(LogLevel.Error, "Failed to login to Discord", error);
   process.exit(1);
 });
