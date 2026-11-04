@@ -96,7 +96,11 @@ function toServers(...fakes: FakeOllama[]): Server[] {
   return fakes.map((fake) => ({ url: fake.url, available: true }));
 }
 
-function openStream(servers: Server[], idleTimeoutMs = 0) {
+function openStream(
+  servers: Server[],
+  idleTimeoutMs = 0,
+  signal?: AbortSignal,
+) {
   return makeBaseRequest<Readable>(
     servers,
     "/api/chat",
@@ -106,10 +110,11 @@ function openStream(servers: Server[], idleTimeoutMs = 0) {
     0,
     0,
     idleTimeoutMs,
+    signal,
   );
 }
 
-function chat(servers: Server[], waitTimeoutMs = 1_000) {
+function chat(servers: Server[], waitTimeoutMs = 1_000, signal?: AbortSignal) {
   return makeBaseRequest<ChatChunk>(
     servers,
     "/api/chat",
@@ -118,6 +123,8 @@ function chat(servers: Server[], waitTimeoutMs = 1_000) {
     "json",
     0,
     waitTimeoutMs,
+    0,
+    signal,
   );
 }
 
@@ -347,6 +354,43 @@ test("makeBaseRequest gives up once the wait timeout passes", async (t) => {
 
   a.finishStreams();
   await consumed;
+});
+
+test("makeBaseRequest stops waiting for a server once its signal aborts", async (t) => {
+  const a = await startFakeOllama(t, "A");
+  const servers = toServers(a);
+  const controller = new AbortController();
+
+  const stream = await openStream(servers);
+  const consumed = consume(stream);
+  const reply = chat(servers, 0, controller.signal);
+
+  assert.equal(await isPending(reply, 50), true);
+  controller.abort();
+  await assert.rejects(reply, { name: "AbortError" });
+  assert.equal(a.requestCount(), 1);
+
+  a.finishStreams();
+  await consumed;
+});
+
+test("makeBaseRequest closes its stream and releases the server once its signal aborts", async (t) => {
+  const a = await startFakeOllama(t, "A");
+  const servers = toServers(a);
+  const controller = new AbortController();
+
+  const stream = await openStream(servers, 0, controller.signal);
+  const consumed = consume(stream);
+  const upstreamClosed = a.streamClosed();
+  await delay(50);
+
+  controller.abort();
+  const { error } = await consumed;
+  await upstreamClosed;
+
+  assert.ok(error);
+  assert.equal(servers[0].available, true);
+  assert.equal((await chat(servers)).message.content, "A");
 });
 
 test(

@@ -205,7 +205,7 @@ const generate: BotCommand = {
           OllamaGenerateRequest
         >("/api/generate", "post", payload, "stream");
 
-        handleStreamResponse<OllamaGenerateResponse>(
+        await handleStreamResponse<OllamaGenerateResponse>(
           interaction,
           responseStream,
           () => {

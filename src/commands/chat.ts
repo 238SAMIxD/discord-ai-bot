@@ -14,6 +14,7 @@ import {
   addToUserHistory,
   startTurn,
 } from "../state/conversations.js";
+import { addPendingChat, removePendingChat } from "../state/pendingChats.js";
 
 const data = new SlashCommandBuilder()
   .setName("chat")
@@ -79,16 +80,17 @@ const chat: BotCommand = {
     }
   },
   async execute(interaction: ChatInputCommandInteraction) {
+    const channelID = interaction.channelId ?? "";
+    const userID = interaction.user.id;
+    const pending = addPendingChat(channelID, userID);
     try {
       await interaction.deferReply();
       const prompt = interaction.options.getString("prompt", true);
       const model = interaction.options.getString("model") ?? getConfig().model;
       const stream = interaction.options.getBoolean("stream") ?? false;
-      const channelID = interaction.channelId ?? "";
-      const userID = interaction.user.id;
       const content = `${speakerName(interaction)}: ${prompt}`;
 
-      const systemMessage = await buildSystemMessage(model);
+      const systemMessage = await buildSystemMessage(model, pending.signal);
       const messagesToSend: {
         role: "user" | "assistant" | "system";
         content: string;
@@ -108,33 +110,45 @@ const chat: BotCommand = {
         stream,
       };
 
+      const saveReply = (reply: string) => {
+        removePendingChat(channelID, userID, pending);
+        saveExchange(channelID, userID, turn, content, reply);
+      };
+
       if (!stream) {
         const response = await makeRequest<
           OllamaChatResponse,
           OllamaChatRequest
-        >("/api/chat", "post", payload, "json");
+        >("/api/chat", "post", payload, "json", pending.signal);
         const responseText =
           response?.message?.content || "(No response from Ollama)";
 
-        saveExchange(channelID, userID, turn, content, responseText);
+        saveReply(responseText);
 
         await replySplitInteraction(interaction, responseText, true);
       } else {
         const responseStream = await makeRequest<
           NodeJS.ReadableStream,
           OllamaChatRequest
-        >("/api/chat", "post", payload, "stream");
+        >("/api/chat", "post", payload, "stream", pending.signal);
 
-        handleStreamResponse<OllamaChatResponse>(
+        await handleStreamResponse<OllamaChatResponse>(
           interaction,
           responseStream,
-          (cleanText) =>
-            saveExchange(channelID, userID, turn, content, cleanText),
+          saveReply,
         );
       }
     } catch (error) {
-      logError(error);
-      await interaction.editReply({ content: "Failed to run chat." });
+      if (pending.signal.aborted) {
+        await interaction.editReply({
+          content: "Cancelled because your conversation history was cleared.",
+        });
+      } else {
+        logError(error);
+        await interaction.editReply({ content: "Failed to run chat." });
+      }
+    } finally {
+      removePendingChat(channelID, userID, pending);
     }
   },
 };
