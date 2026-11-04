@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import {
   addToUserHistory,
   clearUserHistory,
@@ -274,5 +275,38 @@ test("addToUserHistory skips an exchange that started before the history was cle
   assert.deepEqual(
     getUserHistory("111", "alice"),
     exchange("New question", "New answer"),
+  );
+});
+
+test("addToUserHistory rolls back inserted messages when trimming fails", () => {
+  for (let i = 1; i <= 50; i++) {
+    addMessage("111", "alice", `Seeded ${i}`);
+  }
+  const other = new DatabaseSync(dbPath);
+  try {
+    other.exec(`
+      CREATE TRIGGER fail_trim BEFORE DELETE ON messages
+      BEGIN
+        SELECT RAISE(ABORT, 'trim failed');
+      END;
+    `);
+  } finally {
+    other.close();
+  }
+
+  assert.throws(
+    () =>
+      addToUserHistory(
+        "111",
+        "alice",
+        startTurn(),
+        ...exchange("Lost question", "Lost"),
+      ),
+    /trim failed/,
+  );
+
+  assert.deepEqual(
+    getUserHistory("111", "alice"),
+    userMessages("Seeded", 1, 50),
   );
 });

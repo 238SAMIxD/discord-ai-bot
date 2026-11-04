@@ -30,7 +30,11 @@ const config = getConfig();
 try {
   openChatHistory(config.chatHistoryDb);
 } catch (error) {
-  log.log(LogLevel.Error, "Failed to open the chat history database", error);
+  log.log(
+    LogLevel.Error,
+    `Failed to open the chat history database at ${config.chatHistoryDb}`,
+    error,
+  );
   process.exit(1);
 }
 

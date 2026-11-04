@@ -4,7 +4,7 @@ import {
   AutocompleteInteraction,
 } from "discord.js";
 import { makeRequest, getModels, buildSystemMessage } from "../api/ollama.js";
-import { logError } from "../utils/logger.js";
+import { log, logError, LogLevel } from "../utils/logger.js";
 import { replySplitInteraction, speakerName } from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
 import { getConfig } from "../config.js";
@@ -54,7 +54,7 @@ function saveExchange(
       { role: "assistant", content: reply },
     );
   } catch (error) {
-    logError(error);
+    log.log(LogLevel.Error, "Failed to save /chat history", error);
   }
 }
 

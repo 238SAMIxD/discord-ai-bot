@@ -6,15 +6,17 @@ import { stopShards } from "./shards.js";
 
 import type { ShardingManager } from "discord.js";
 
-function fakeChild(exitOn: NodeJS.Signals) {
+function fakeChild(exitOn: NodeJS.Signals, delay = 0) {
   const child = Object.assign(new EventEmitter(), {
+    exitCode: null as number | null,
+    signalCode: null as NodeJS.Signals | null,
     exited: false,
     kill: mock.fn((signal: NodeJS.Signals) => {
       if (signal === exitOn) {
-        setImmediate(() => {
+        setTimeout(() => {
           child.exited = true;
           child.emit("exit");
-        });
+        }, delay);
       }
       return true;
     }),
@@ -25,12 +27,12 @@ function fakeChild(exitOn: NodeJS.Signals) {
 type FakeChild = ReturnType<typeof fakeChild>;
 
 function fakeManager(...children: (FakeChild | null)[]) {
-  return {
+  return Object.assign(new EventEmitter(), {
     respawn: true,
     shards: new Collection(
       children.map((child, id) => [id, { process: child }] as const),
     ),
-  };
+  });
 }
 
 function killSignals(child: FakeChild): NodeJS.Signals[] {
@@ -60,4 +62,31 @@ test("stopShards kills a shard that is still running after the timeout", async (
 
   assert.equal(stuck.exited, true);
   assert.deepEqual(killSignals(stuck), ["SIGTERM", "SIGKILL"]);
+});
+
+test("stopShards does not signal or wait for a shard process that already exited", async () => {
+  const exited = Object.assign(fakeChild("SIGKILL"), { exitCode: 0 });
+  const manager = fakeManager(exited);
+
+  await stopShards(manager as unknown as ShardingManager, 20);
+
+  assert.deepEqual(killSignals(exited), []);
+});
+
+test("stopShards also stops and waits for a shard started during shutdown", async () => {
+  const first = fakeChild("SIGTERM", 10);
+  const manager = fakeManager(first);
+  const stopping = stopShards(manager as unknown as ShardingManager, 1000);
+
+  const late = fakeChild("SIGTERM", 40);
+  const lateShard = Object.assign(new EventEmitter(), {
+    process: null as FakeChild | null,
+  });
+  manager.emit("shardCreate", lateShard);
+  lateShard.process = late;
+  lateShard.emit("spawn", late);
+  await stopping;
+
+  assert.deepEqual(killSignals(late), ["SIGTERM"]);
+  assert.equal(late.exited, true);
 });
