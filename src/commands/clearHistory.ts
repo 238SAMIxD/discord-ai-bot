@@ -27,7 +27,7 @@ const clearHistory: BotCommand = {
       const cleared: string[] = [];
       if (chats > 0) {
         cleared.push(
-          `your conversation history (${plural(Math.floor(chats / 2), "chat")})`,
+          `your conversation history (${plural(Math.floor(chats / 2), "message")})`,
         );
       }
       if (pending > 0) {
