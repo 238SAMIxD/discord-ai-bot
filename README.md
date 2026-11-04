@@ -49,7 +49,7 @@
 
 Every pull request and every push to `main` runs these GitHub Actions checks:
 
-- `check`: `pnpm test:prettier`, `pnpm test:lint`, `pnpm test:tsc`, `pnpm test` and `pnpm build` on Node.js 22 and 24
+- `check`: `pnpm test:prettier`, `pnpm test:lint`, `pnpm test:tsc`, `pnpm test` and `pnpm build` on Node.js 22, 24 and 26
 - `docker`: builds the Docker image without pushing it anywhere, then checks that the container refuses to start without a token
 - `codeql`: CodeQL code scanning, which also runs weekly
 
