@@ -97,9 +97,16 @@ fail() {
 }
 
 normalize_findings() {
-  jq -c '
-    if type != "array" then error("the findings block is not an array") else . end
-    | map(select(type == "object"))
+  jq -c -s '
+    if length == 0 or any(.[]; type != "array") then error("the findings block is not a JSON array") else add end
+    | map(
+        if type == "object" then .
+        elif type == "string" then
+          (split("\n")) as $lines
+          | ($lines[0] | .[0:120]) as $title
+          | {title: $title, body: (if ($lines | length) > 1 then $lines[1:] | join("\n") elif . != $title then . else "" end)}
+        else error("a finding is neither an object nor a string")
+        end)
     | to_entries
     | map(.key as $index | .value | {
         index: $index,
@@ -126,6 +133,7 @@ repair_json() {
         if (in_string) {
           if (c == "\\") {
             d = substr(text, i + 1, 1)
+            if (d == "\n" || d == "\t" || d == "\r" || d == "") { printf "\\\\"; continue }
             if (quote == sq && d == sq) printf "%s", sq
             else printf "%s%s", c, d
             i++
@@ -134,7 +142,8 @@ repair_json() {
           else if (c == "\"") printf "\\\""
           else if (c == "\n") printf "\\n"
           else if (c == "\t") printf "\\t"
-          else if (c != "\r") printf "%s", c
+          else if (c == "\r") printf "\\r"
+          else printf "%s", c
           continue
         }
         if (c == "\"" || c == sq) { printf "\""; in_string = 1; quote = c; continue }
@@ -157,6 +166,34 @@ repair_json() {
           }
         }
         printf "%s", c
+        if (c !~ /[ \t\r\n]/) prev = c
+      }
+      printf "\n"
+    }
+  ' "$1"
+}
+
+split_raw_findings() {
+  awk '
+    { text = text (NR > 1 ? "\n" : "") $0 }
+    END {
+      n = length(text)
+      in_string = 0
+      prev = ""
+      for (i = 1; i <= n; i++) {
+        c = substr(text, i, 1)
+        printf "%s", c
+        if (in_string) {
+          if (c == "\\") { i++; printf "%s", substr(text, i, 1) }
+          else if (c == "\"") in_string = 0
+          continue
+        }
+        if (c == "\"") { in_string = 1; continue }
+        if (c == "," && prev == "}") {
+          j = i + 1
+          while (j <= n && substr(text, j, 1) ~ /[ \t]/) j++
+          if (substr(text, j, 1) == "{") { printf "\n"; i = j - 1; prev = ","; continue }
+        }
         if (c !~ /[ \t\r\n]/) prev = c
       }
       printf "\n"
@@ -203,7 +240,7 @@ extract_findings() {
     ' "$work/findings.json" > "$work/inline-comments.json"
   else
     findings_state="invalid"
-    echo "::warning::The findings block from the model is not valid JSON, so it is shown as returned."
+    echo "::warning::The findings block from the model could not be read as a JSON array of findings, so it is shown as returned."
   fi
   jq -Rrs 'sub("^\\s+"; "") | sub("\\s+$"; "")' "$work/model-clean.md" > "$work/model.md"
 }
@@ -247,7 +284,7 @@ compose_review() {
     {
       cat "$work/model.md"
       printf '\n**Findings**: the model returned them in a format the bot could not read, so they are shown as returned.\n\n<details>\n<summary>Findings as returned</summary>\n\n````\n'
-      awk '{ gsub(/\}[ \t]*,[ \t]*\{/, "},\n{"); print }' "$work/findings-raw.txt"
+      split_raw_findings "$work/findings-raw.txt"
       printf '````\n\n</details>\n'
     } > "$work/review-body.md"
   else
