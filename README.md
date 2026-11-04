@@ -30,6 +30,7 @@
      1. In Discord, go to User Settings » Advanced, and enable Developer Mode
      2. Right click on a channel you want to use, and click Copy Channel ID
    - You can edit the system message the bot uses, or disable it entirely
+   - `/chat` sends each prompt as `Name: prompt`, using the sender's server nickname or display name, so the model knows who is talking
 8. Install the required dependencies with `pnpm i`
 9. Start the bot with `pnpm start`
 10. You can interact with the bot by @mentioning it with your message

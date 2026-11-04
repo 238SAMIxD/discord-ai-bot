@@ -1,6 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseJSONMessage, parsePositiveInt } from "./helpers.js";
+import { GuildMember } from "discord.js";
+import { parseJSONMessage, parsePositiveInt, speakerName } from "./helpers.js";
+
+import type { BaseInteraction } from "discord.js";
+
+function interactionFrom(member: unknown): BaseInteraction {
+  return {
+    member,
+    user: { displayName: "Alice A." },
+  } as unknown as BaseInteraction;
+}
+
+function cachedMember(nickname: string | null): GuildMember {
+  return Object.create(GuildMember.prototype, {
+    nickname: { value: nickname },
+    user: { value: { displayName: "Alice A." } },
+  }) as GuildMember;
+}
 
 test("parseJSONMessage preserves plain quotes while decoding JSON-style escape sequences", () => {
   const input = String.raw`You said "hello"\nPath: C:\\Users\\bot`;
@@ -31,4 +48,21 @@ test("parsePositiveInt falls back when unset or blank, and validates numbers", (
 
   assert.throws(() => parsePositiveInt("-1", 0), /Invalid numeric value: -1/);
   assert.throws(() => parsePositiveInt("abc", 0), /Invalid numeric value: abc/);
+});
+
+test("speakerName uses the server nickname of a cached or uncached member", () => {
+  assert.equal(
+    speakerName(interactionFrom(cachedMember("Captain Alice"))),
+    "Captain Alice",
+  );
+  assert.equal(
+    speakerName(interactionFrom({ nick: "Captain Alice" })),
+    "Captain Alice",
+  );
+});
+
+test("speakerName falls back to the user's display name without a nickname or in DMs", () => {
+  assert.equal(speakerName(interactionFrom(cachedMember(null))), "Alice A.");
+  assert.equal(speakerName(interactionFrom({ nick: null })), "Alice A.");
+  assert.equal(speakerName(interactionFrom(null)), "Alice A.");
 });

@@ -5,11 +5,15 @@ import {
 } from "discord.js";
 import { makeRequest, getModels, buildSystemMessage } from "../api/ollama.js";
 import { logError } from "../utils/logger.js";
-import { replySplitInteraction } from "../utils/helpers.js";
+import { replySplitInteraction, speakerName } from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
 import { getConfig } from "../config.js";
 import { BotCommand, OllamaChatResponse, OllamaChatRequest } from "../types.js";
-import { getChatHistory, addChatMessage } from "../state/conversations.js";
+import {
+  getUserHistory,
+  addToUserHistory,
+  startTurn,
+} from "../state/conversations.js";
 
 const data = new SlashCommandBuilder()
   .setName("chat")
@@ -61,6 +65,8 @@ const chat: BotCommand = {
       const model = interaction.options.getString("model") ?? getConfig().model;
       const stream = interaction.options.getBoolean("stream") ?? false;
       const channelID = interaction.channelId ?? "";
+      const userID = interaction.user.id;
+      const content = `${speakerName(interaction)}: ${prompt}`;
 
       const systemMessage = await buildSystemMessage(model);
       const messagesToSend: {
@@ -72,8 +78,9 @@ const chat: BotCommand = {
         messagesToSend.push({ role: "system", content: systemMessage });
       }
 
-      messagesToSend.push(...getChatHistory(channelID));
-      messagesToSend.push({ role: "user", content: prompt });
+      const turn = startTurn();
+      messagesToSend.push(...getUserHistory(channelID, userID));
+      messagesToSend.push({ role: "user", content });
 
       const payload: OllamaChatRequest = {
         model,
@@ -89,11 +96,13 @@ const chat: BotCommand = {
         const responseText =
           response?.message?.content || "(No response from Ollama)";
 
-        addChatMessage(channelID, { role: "user", content: prompt });
-        addChatMessage(channelID, {
-          role: "assistant",
-          content: responseText,
-        });
+        addToUserHistory(
+          channelID,
+          userID,
+          turn,
+          { role: "user", content },
+          { role: "assistant", content: responseText },
+        );
 
         await replySplitInteraction(interaction, responseText, true);
       } else {
@@ -106,11 +115,13 @@ const chat: BotCommand = {
           interaction,
           responseStream,
           (cleanText) => {
-            addChatMessage(channelID, { role: "user", content: prompt });
-            addChatMessage(channelID, {
-              role: "assistant",
-              content: cleanText,
-            });
+            addToUserHistory(
+              channelID,
+              userID,
+              turn,
+              { role: "user", content },
+              { role: "assistant", content: cleanText },
+            );
           },
         );
       }
