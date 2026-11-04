@@ -48,6 +48,7 @@
    - For `/text2img`, set `STABLE_DIFFUSION=http://host.docker.internal:7860` in `.env`, because `localhost` inside the container is the container itself
 3. Start the bot with `make compose-up` if you have Make installed
    - Otherwise, try `docker compose -p discord-ai up` instead
+   - If you run the image with plain `docker run` instead of Compose, add `--add-host=host.docker.internal:host-gateway` and `-e OLLAMA=http://host.docker.internal:11434`, which Compose otherwise sets for you
 4. You can interact with the bot with its slash commands: `/chat`, `/generate`, `/text2img`, `/models` and `/clearhistory`
 5. `/chat` history is stored in the `chat-history` volume mounted at `/app/data`, so it survives restarts, rebuilds and `make compose-down`
    - Keep `CHAT_HISTORY_DB` inside `./data` (the default) so the database is saved in that volume
