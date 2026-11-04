@@ -17,6 +17,7 @@ import {
 } from "../state/conversations.js";
 import { addPendingChat, removePendingChat } from "../state/pendingChats.js";
 import { createStopButton } from "../utils/stopButton.js";
+import { buildBotContext } from "../utils/botContext.js";
 
 const data = new SlashCommandBuilder()
   .setName("chat")
@@ -96,7 +97,11 @@ const chat: BotCommand = {
       const stream = interaction.options.getBoolean("stream") ?? false;
       const content = `${speakerName(interaction)}: ${prompt}`;
 
-      const systemMessage = await buildSystemMessage(model, signal);
+      const systemMessage = await buildSystemMessage(
+        model,
+        signal,
+        await buildBotContext(interaction),
+      );
       const messagesToSend: {
         role: "user" | "assistant" | "system";
         content: string;

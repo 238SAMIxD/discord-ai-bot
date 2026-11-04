@@ -55,6 +55,7 @@ const options = { timeout: 5_000 };
 setLogger(new Logger(true, "stopButton.test"));
 process.env.TOKEN = "test-token";
 process.env.USE_SYSTEM = "false";
+process.env.USE_BOT_CONTEXT = "false";
 process.env.USE_MODEL_SYSTEM = "false";
 process.env.SHOW_STATS = "true";
 
