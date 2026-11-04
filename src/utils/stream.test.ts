@@ -72,3 +72,67 @@ test("handleStreamResponse lets an edit in flight finish before it rejects", asy
   assert.equal(await outcome, "Stream failed");
   assert.equal(interaction.editReply.mock.callCount(), 1);
 });
+
+function stoppableStream() {
+  const saved: string[] = [];
+  const interaction = {
+    editReply: mock.fn(async (_content: string) => undefined),
+    followUp: mock.fn(async (_reply: { content: string }) => undefined),
+  };
+  const stream = new PassThrough();
+  const stop = new AbortController();
+  const outcome = handleStreamResponse(
+    interaction as unknown as ChatInputCommandInteraction,
+    stream,
+    (text) => {
+      saved.push(text);
+    },
+    stop.signal,
+  );
+  const stopStream = () => {
+    stop.abort();
+    stream.destroy(new Error("Stopped"));
+  };
+  return { saved, interaction, stream, outcome, stopStream };
+}
+
+test("handleStreamResponse keeps the text so far without saving it once stopped", async () => {
+  const { saved, interaction, stream, outcome, stopStream } = stoppableStream();
+
+  stream.write(`${JSON.stringify({ message: { content: "Hello" } })}\n`);
+  await setImmediate();
+  stopStream();
+
+  assert.equal(await outcome, true);
+  assert.deepEqual(saved, []);
+  assert.deepEqual(interaction.editReply.mock.calls.at(-1)?.arguments, [
+    "Hello",
+  ]);
+});
+
+test("handleStreamResponse posts the rest of a long stopped reply as follow-ups", async () => {
+  const { interaction, stream, outcome, stopStream } = stoppableStream();
+  const text = "Hello ".repeat(400).trim();
+
+  stream.write(`${JSON.stringify({ message: { content: text } })}\n`);
+  await setImmediate();
+  stopStream();
+
+  assert.equal(await outcome, true);
+  const [first] = interaction.editReply.mock.calls.at(-1)?.arguments ?? [];
+  const rest = interaction.followUp.mock.calls.map(
+    (call) => call.arguments[0].content,
+  );
+  assert.equal(rest.length, 1);
+  assert.equal(`${first} ${rest[0]}`, text);
+});
+
+test("handleStreamResponse rejects when it is stopped before any text arrives", async () => {
+  const { saved, interaction, outcome, stopStream } = stoppableStream();
+
+  stopStream();
+
+  await assert.rejects(outcome, /Stopped/);
+  assert.deepEqual(saved, []);
+  assert.equal(interaction.editReply.mock.callCount(), 0);
+});

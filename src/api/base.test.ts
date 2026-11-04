@@ -393,6 +393,76 @@ test("makeBaseRequest closes its stream and releases the server once its signal 
   assert.equal((await chat(servers)).message.content, "A");
 });
 
+async function startHeldServer(t: TestContext) {
+  const requests = new EventEmitter();
+  const server = createServer(() => {
+    requests.emit("request");
+  });
+
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+
+  return {
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    nextRequest: () => once(requests, "request"),
+  };
+}
+
+test("makeBaseRequest runs onAbort while it still holds the server, then releases it", async (t) => {
+  const held = await startHeldServer(t);
+  const servers: Server[] = [{ url: held.url, available: true }];
+  const controller = new AbortController();
+  const heldDuringAbort: boolean[] = [];
+
+  const received = held.nextRequest();
+  const reply = makeBaseRequest(
+    servers,
+    "/sdapi/v1/txt2img",
+    "post",
+    {},
+    "json",
+    0,
+    0,
+    0,
+    controller.signal,
+    async (server) => {
+      heldDuringAbort.push(server === servers[0] && !server.available);
+    },
+  );
+  await received;
+  controller.abort();
+
+  await assert.rejects(reply, { name: "AbortError" });
+  assert.deepEqual(heldDuringAbort, [true]);
+  assert.equal(servers[0].available, true);
+});
+
+test("makeBaseRequest doesn't run onAbort when a request fails without being aborted", async (t) => {
+  const a = await startFakeOllama(t, "A", 500);
+  const onAbort = t.mock.fn(async () => undefined);
+
+  await assert.rejects(
+    makeBaseRequest(
+      toServers(a),
+      "/api/chat",
+      "post",
+      { stream: false },
+      "json",
+      0,
+      0,
+      0,
+      new AbortController().signal,
+      onAbort,
+    ),
+    { name: "AxiosError", status: 500 },
+  );
+  assert.equal(onAbort.mock.callCount(), 0);
+});
+
 test(
   "makeBaseRequest waits up to 60 seconds for a free server by default",
   { timeout: 5_000 },

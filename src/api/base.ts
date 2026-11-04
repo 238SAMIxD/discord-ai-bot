@@ -63,6 +63,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
   waitTimeoutMs = 60_000,
   streamIdleTimeoutMs = 0,
   signal?: AbortSignal,
+  onAbort?: (server: Server) => Promise<unknown>,
 ): Promise<TResponse> {
   if (servers.length === 0) {
     throw new Error("No servers available");
@@ -113,6 +114,9 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
         }
         return result.data as TResponse;
       } catch (err) {
+        if (signal?.aborted && onAbort) {
+          await onAbort(server).catch(logError);
+        }
         signal?.throwIfAborted();
         error = err as Error;
         failed.add(server);

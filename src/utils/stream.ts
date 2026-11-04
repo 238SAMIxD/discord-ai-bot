@@ -13,7 +13,8 @@ export async function handleStreamResponse<
   interaction: ChatInputCommandInteraction,
   responseStream: NodeJS.ReadableStream,
   onComplete: (fullText: string) => void | Promise<void>,
-): Promise<void> {
+  stopSignal?: AbortSignal,
+): Promise<boolean> {
   const streamState = {
     fullResponse: "",
     buffer: "",
@@ -73,12 +74,16 @@ export async function handleStreamResponse<
     void updateMessage();
   });
 
+  let stopped = false;
   try {
     await finished(responseStream);
   } catch (error) {
-    failed = true;
-    await streamState.editPromise.catch(() => undefined);
-    throw error;
+    if (!stopSignal?.aborted || !streamState.fullResponse.trim()) {
+      failed = true;
+      await streamState.editPromise.catch(() => undefined);
+      throw error;
+    }
+    stopped = true;
   }
 
   if (streamState.buffer.trim().length > 0) {
@@ -92,7 +97,7 @@ export async function handleStreamResponse<
   }
 
   const cleanText = streamState.fullResponse.trim() || "(No response)";
-  await onComplete(cleanText);
+  if (!stopped) await onComplete(cleanText);
   await updateMessage(true);
 
   const segments = splitText(cleanText, 2000);
@@ -108,4 +113,6 @@ export async function handleStreamResponse<
       logError(err);
     }
   }
+
+  return stopped;
 }

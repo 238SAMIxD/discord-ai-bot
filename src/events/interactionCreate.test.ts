@@ -17,18 +17,26 @@ function chatCommand(): Required<BotCommand> {
   return command as Required<BotCommand>;
 }
 
-function fakeInteraction(type: "autocomplete" | "command", channelId: string) {
+function fakeInteraction(
+  type: "autocomplete" | "command" | "button",
+  channelId: string,
+  customId = "",
+) {
   return {
     commandName: "chat",
+    customId,
     channelId,
+    user: { id: "1" },
     channel: { parentId: null, isThread: () => false },
     deferred: false,
     replied: false,
     inGuild: () => true,
     isAutocomplete: () => type === "autocomplete",
+    isButton: () => type === "button",
     isChatInputCommand: () => type === "command",
     respond: mock.fn(),
     reply: mock.fn(),
+    deferUpdate: mock.fn(),
   };
 }
 
@@ -85,4 +93,23 @@ test("interactionCreate runs autocomplete in an allowed channel", async (t) => {
   await event.execute(interaction as unknown as Interaction);
   assert.equal(autocomplete.mock.callCount(), 1);
   assert.equal(interaction.respond.mock.callCount(), 0);
+});
+
+test("interactionCreate sends a Stop button click to the Stop button handler", async () => {
+  const interaction = fakeInteraction("button", "111", "stop:404");
+  await event.execute(interaction as unknown as Interaction);
+  assert.deepEqual(interaction.reply.mock.calls[0]?.arguments, [
+    {
+      content: "This response is no longer running.",
+      flags: MessageFlags.Ephemeral,
+    },
+  ]);
+  assert.equal(interaction.deferUpdate.mock.callCount(), 0);
+});
+
+test("interactionCreate ignores buttons that aren't Stop buttons", async () => {
+  const interaction = fakeInteraction("button", "111", "other");
+  await event.execute(interaction as unknown as Interaction);
+  assert.equal(interaction.reply.mock.callCount(), 0);
+  assert.equal(interaction.deferUpdate.mock.callCount(), 0);
 });

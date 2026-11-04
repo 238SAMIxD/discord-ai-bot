@@ -90,6 +90,8 @@ async function startFakeOllama(t: TestContext) {
   };
 }
 
+let interactionCount = 0;
+
 function fakeInteraction(
   channelId: string,
   prompt = "",
@@ -97,6 +99,7 @@ function fakeInteraction(
   userId = USER,
 ) {
   return {
+    id: String(++interactionCount),
     channelId,
     user: { id: userId, displayName: `User ${userId}` },
     deferred: false,
@@ -116,7 +119,14 @@ function run(command: BotCommand, interaction: FakeInteraction) {
 }
 
 function lastReply(interaction: FakeInteraction) {
-  return interaction.editReply.mock.calls.at(-1)?.arguments[0];
+  return interaction.editReply.mock.calls
+    .map((call) => call.arguments[0])
+    .filter(
+      (reply) =>
+        typeof reply === "string" ||
+        (reply as { content?: unknown }).content !== undefined,
+    )
+    .at(-1);
 }
 
 function isPending(promise: Promise<unknown>, ms: number) {
