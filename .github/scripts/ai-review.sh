@@ -14,6 +14,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 review_marker="<!-- ai-review -->"
 error_marker="<!-- ai-review-error -->"
 bot_login="github-actions[bot]"
+inline_marker="<!-- ai-review-inline -->"
+inline_note=""
 boundary="untrusted-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 content_filter='(.choices[0].message.content // "") | if type == "array" then map(.text // "") | join("") else tostring end'
 truncation_note=""
@@ -80,6 +82,97 @@ fail() {
   exit 1
 }
 
+extract_inline_comments() {
+  : > "$work/inline.json"
+  awk -v block="$work/inline.json" '
+    /^[[:space:]]*```[[:space:]]*inline-comments[[:space:]]*$/ { grab = 1; next }
+    grab && /^[[:space:]]*```[[:space:]]*$/ { grab = 0; next }
+    grab { print > block; next }
+    { print }
+  ' "$work/review.md" | jq -Rrs 'sub("\\s+$"; "")' > "$work/review-clean.md"
+  mv "$work/review-clean.md" "$work/review.md"
+  echo "[]" > "$work/inline-comments.json"
+  if [[ ! -s "$work/inline.json" ]]; then
+    return 0
+  fi
+  if ! jq -c --rawfile allowed "$work/lines.tsv" --arg model "$OPENROUTER_MODEL" --arg marker "$inline_marker" '
+      ($allowed | split("\n") | map(select(length > 0)) | INDEX(.)) as $ok
+      | (if type == "array" then . else [] end)
+      | map(select(type == "object" and (.path | type) == "string"))
+      | map(.line |= (if type == "string" then (tonumber? // null) else . end))
+      | map(select((.line | type) == "number" and .line == (.line | floor)))
+      | map(select($ok[.path + "\t" + (.line | tostring)] != null))
+      | .[0:25]
+      | map({
+          path,
+          line,
+          side: "RIGHT",
+          body: ($marker + "\n**" + ((.severity // "note") | tostring) + "** · " + ((.title // "Finding") | tostring)
+            + "\n\n" + ((.body // "") | tostring | .[0:4000]) + "\n\n<sub>AI review by `" + $model + "`</sub>")
+        })
+    ' "$work/inline.json" > "$work/inline-candidates.json" 2> /dev/null || [[ ! -s "$work/inline-candidates.json" ]]; then
+    echo "::warning::The inline comments block from the model is not valid JSON, so only the review comment is posted."
+    return 0
+  fi
+  mv "$work/inline-candidates.json" "$work/inline-comments.json"
+}
+
+list_old_inline_comments() {
+  : > "$work/inline-old.tsv"
+  gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/comments" \
+    --jq ".[] | {id, review: .pull_request_review_id, reply: .in_reply_to_id, login: .user.login, mine: (.body | startswith(\"$inline_marker\"))}" \
+    > "$work/inline-existing.json" || return 1
+  jq -rs --arg bot "$bot_login" '
+    [.[] | .reply // empty] as $replied
+    | .[]
+    | select(.login == $bot and .mine)
+    | select(.id as $id | $replied | any(. == $id) | not)
+    | "\(.id)\t\(.review // "")"
+  ' "$work/inline-existing.json" > "$work/inline-old.tsv"
+}
+
+retire_old_inline_comments() {
+  local comment_id review_id failed=0
+  while IFS=$'\t' read -r comment_id review_id; do
+    gh api --method DELETE "repos/$REPO/pulls/comments/$comment_id" > /dev/null || failed=1
+  done < "$work/inline-old.tsv"
+  while IFS= read -r review_id; do
+    gh api --method PUT "repos/$REPO/pulls/$PR_NUMBER/reviews/$review_id" \
+      -f body="$inline_marker"$'\n'"Superseded by a later AI review." > /dev/null || failed=1
+  done < <(cut -f2 "$work/inline-old.tsv" | grep -v '^$' | sort -u)
+  return "$failed"
+}
+
+post_inline_review() {
+  local count
+  count=$(jq 'length' "$work/inline-comments.json")
+  if (( count == 0 )); then
+    return 0
+  fi
+  jq -n \
+    --arg sha "$head_sha" \
+    --arg body "$inline_marker"$'\n'"🤖 AI review left $count inline comment(s) on commit $head_sha. The full review is in the AI review comment." \
+    --slurpfile comments "$work/inline-comments.json" \
+    '{commit_id: $sha, event: "COMMENT", body: $body, comments: $comments[0]}' > "$work/review-request.json"
+  gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/reviews" --input "$work/review-request.json" > /dev/null || return 1
+  inline_note=" $count finding(s) are also posted as inline comments."
+}
+
+publish_inline_review() {
+  if ! list_old_inline_comments; then
+    echo "::warning::Could not list earlier inline comments, so inline comments are skipped this time."
+    return 0
+  fi
+  if ! post_inline_review; then
+    echo "::warning::Could not post the inline comments, so the earlier ones are kept and the findings are only in the review comment."
+    return 0
+  fi
+  if [[ -n "$inline_note" ]]; then
+    publish_review
+  fi
+  retire_old_inline_comments || echo "::warning::Could not remove or retire every inline comment of an earlier review."
+}
+
 publish_review() {
   local skipped_note="" model_kind="an OpenRouter model"
   if [[ "$OPENROUTER_MODEL" == *:free ]]; then
@@ -94,8 +187,8 @@ publish_review() {
       printf '> [!WARNING]\n> %s\n\n' "$truncation_note"
     fi
     cat "$work/review.md"
-    printf '\n---\n<sub>Automated review by %s. It can be wrong or miss problems, so verify its findings before acting on them. Reviewed commit %s.%s</sub>\n' \
-      "$model_kind" "$head_sha" "$skipped_note"
+    printf '\n---\n<sub>Automated review by %s. It can be wrong or miss problems, so verify its findings before acting on them. Reviewed commit %s.%s%s</sub>\n' \
+      "$model_kind" "$head_sha" "$inline_note" "$skipped_note"
   } > "$work/comment.md"
   upsert_comment "$review_marker" "$work/comment.md"
   delete_comments "$error_marker" || echo "::warning::Could not remove an earlier failure comment."
@@ -192,6 +285,8 @@ if [[ ! -s "$work/review.diff" ]]; then
   echo "Only lockfiles or generated files changed, so the model is not called."
   printf 'This pull request only changes lockfiles or generated files. They are not sent to the model, so there was nothing to review.\n' > "$work/review.md"
   publish_review
+  echo "[]" > "$work/inline-comments.json"
+  publish_inline_review
   exit 0
 fi
 
@@ -239,6 +334,22 @@ if (( total_chars > budget )); then
 else
   cp "$work/review.diff" "$work/prompt.diff"
 fi
+awk '
+  /^diff --git / { path = ""; next }
+  /^\+\+\+ / {
+    path = substr($0, 5)
+    if (path ~ /^".*"$/) path = substr(path, 2, length(path) - 2)
+    if (path ~ /^b\//) path = substr(path, 3)
+    else path = ""
+    next
+  }
+  path != "" && /^ *[0-9]+ ([ +]|$)/ {
+    number = $0
+    sub(/^ */, "", number)
+    sub(/ .*$/, "", number)
+    print path "\t" number
+  }
+' "$work/prompt.diff" > "$work/lines.tsv"
 echo "Diff: $total_chars characters after filtering, budget $budget, max_tokens $max_tokens."
 
 {
@@ -322,6 +433,7 @@ jq -r "$content_filter"'
   | sub("^\\s*<think>[\\s\\S]*?</think>\\s*"; "")
   | sub("\\s+$"; "")
   | .[0:60000]' "$work/response.json" > "$work/review.md"
+extract_inline_comments
 if [[ -z "$(tr -d '[:space:]' < "$work/review.md")" ]]; then
   fail "The model \`$OPENROUTER_MODEL\` returned an empty review."
 fi
@@ -334,4 +446,5 @@ if [[ "$latest_sha" != "$head_sha" ]]; then
 fi
 
 publish_review
-echo "Review posted for $head_sha."
+publish_inline_review
+echo "Review posted for $head_sha with $(jq 'length' "$work/inline-comments.json") inline comment candidate(s)."

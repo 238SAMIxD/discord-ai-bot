@@ -30,18 +30,18 @@
   "dependencies": {
     "axios": "^1.21.0",
     "discord.js": "^14.28.0",
-    "dotenv": "^16.4.5",
+    "dotenv": "^18.0.9",
     "pdf-parse": "^1.1.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
     "@types/eslint__js": "^8.42.3",
-    "@types/node": "^24.19.2",
+    "@types/node": "^26.6.6",
     "@types/pdf-parse": "^1.1.1",
     "eslint": "^9.20.1",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.5.7",
-    "globals": "^15.15.0",
+    "globals": "^17.13.0",
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",
     "typescript": "^5.4.2",
