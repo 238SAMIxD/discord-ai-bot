@@ -51,5 +51,6 @@ End your reply with a fenced code block whose info string is `findings`. It hold
 - `severity` is critical, high, medium or low.
 - `path` is the file path exactly as it appears after `b/` in the diff header.
 - `line` is the new-file line number printed at the start of the diff line the finding is about. Use only numbered lines, and leave `line` out when the finding is not about one specific line.
-- `title` is a short one-line summary, and `body` holds the full explanation and fix. Escape newlines and quotes so the block is valid JSON.
+- `title` is a short one-line summary, and `body` holds the full explanation and fix.
+- Write strict JSON: put every key and every string in double quotes, write line breaks inside strings as `\n`, escape double quotes inside strings, and leave no trailing commas.
 - Write `[]` when there are no findings.

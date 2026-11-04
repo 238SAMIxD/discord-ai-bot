@@ -96,6 +96,125 @@ fail() {
   exit 1
 }
 
+# Parses the findings block in file $1 into $work/findings-parsed.json.
+# Several top-level arrays are merged, and plain-string entries become findings
+# with their first line as the title. Returns non-zero when the block is not
+# usable, for example when it holds a value that is not an array.
+normalize_findings() {
+  jq -c -s '
+    if length == 0 or any(.[]; type != "array") then error("the findings block is not a JSON array") else add end
+    | map(
+        if type == "object" then .
+        elif type == "string" then
+          (split("\n")) as $lines
+          | ($lines[0] | .[0:120]) as $title
+          | {title: $title, body: (if ($lines | length) > 1 then $lines[1:] | join("\n") elif . != $title then . else "" end)}
+        else error("a finding is neither an object nor a string")
+        end)
+    | to_entries
+    | map(.key as $index | .value | {
+        index: $index,
+        severity: ((.severity // "note") | tostring | ascii_downcase | gsub("[^a-z]"; "") | if . == "" then "note" else . end),
+        title: ((.title // "Finding") | tostring | gsub("[\\r\\n]+"; " ") | .[0:200]),
+        body: ((.body // "") | tostring | .[0:4000]),
+        path: (if (.path | type) == "string" and .path != "" then .path else null end),
+        line: ((.line | if type == "string" then (tonumber? // null) else . end)
+          | if type == "number" and . == floor and . > 0 then . else null end)
+      })
+  ' "$1" > "$work/findings-parsed.json" 2> /dev/null && [[ -s "$work/findings-parsed.json" ]]
+}
+
+# Prints file $1 with the JSON mistakes free models often make fixed: bare and
+# single-quoted keys or strings, trailing commas, and raw control characters
+# inside strings. Text inside strings is otherwise left exactly as written.
+repair_json() {
+  awk -v sq="'" '
+    { text = text (NR > 1 ? "\n" : "") $0 }
+    END {
+      n = length(text)
+      prev = ""
+      in_string = 0
+      quote = ""
+      for (i = 1; i <= n; i++) {
+        c = substr(text, i, 1)
+        if (in_string) {
+          if (c == "\\") {
+            d = substr(text, i + 1, 1)
+            if (d == "\n" || d == "\t" || d == "\r" || d == "") { printf "\\\\"; continue }
+            if (quote == sq && d == sq) printf "%s", sq
+            else printf "%s%s", c, d
+            i++
+          }
+          else if (c == quote) { printf "\""; in_string = 0; prev = "\"" }
+          else if (c == "\"") printf "\\\""
+          else if (c == "\n") printf "\\n"
+          else if (c == "\t") printf "\\t"
+          else if (c == "\r") printf "\\r"
+          else printf "%s", c
+          continue
+        }
+        if (c == "\"" || c == sq) { printf "\""; in_string = 1; quote = c; continue }
+        if (c == ",") {
+          j = i + 1
+          while (j <= n && substr(text, j, 1) ~ /[ \t\r\n]/) j++
+          d = substr(text, j, 1)
+          if (d == "}" || d == "]") continue
+        }
+        if (c ~ /[A-Za-z_]/ && (prev == "{" || prev == ",")) {
+          j = i
+          while (j <= n && substr(text, j, 1) ~ /[A-Za-z0-9_]/) j++
+          k = j
+          while (k <= n && substr(text, k, 1) ~ /[ \t\r\n]/) k++
+          if (substr(text, k, 1) == ":") {
+            printf "\"%s\"", substr(text, i, j - i)
+            prev = "\""
+            i = j - 1
+            continue
+          }
+        }
+        printf "%s", c
+        if (c !~ /[ \t\r\n]/) prev = c
+      }
+      printf "\n"
+    }
+  ' "$1"
+}
+
+# Prints file $1 with a line break between top-level `},{` pairs, so a findings
+# block that could not be parsed is readable when shown as returned. Text inside
+# strings is not touched.
+split_raw_findings() {
+  awk '
+    { text = text (NR > 1 ? "\n" : "") $0 }
+    END {
+      n = length(text)
+      in_string = 0
+      prev = ""
+      for (i = 1; i <= n; i++) {
+        c = substr(text, i, 1)
+        printf "%s", c
+        if (in_string) {
+          if (c == "\\") { i++; printf "%s", substr(text, i, 1) }
+          else if (c == "\"") in_string = 0
+          continue
+        }
+        if (c == "\"") { in_string = 1; continue }
+        if (c == "," && prev == "}") {
+          j = i + 1
+          while (j <= n && substr(text, j, 1) ~ /[ \t]/) j++
+          if (substr(text, j, 1) == "{") { printf "\n"; i = j - 1; prev = ","; continue }
+        }
+        if (c !~ /[ \t\r\n]/) prev = c
+      }
+      printf "\n"
+    }
+  ' "$1"
+}
+
+# Splits the model reply in $work/model.md into the Markdown part and the
+# findings block, then sets findings_state to none, valid or invalid. For a
+# valid block it writes $work/findings.json and the inline comment candidates
+# in $work/inline-comments.json, and drops any Findings section the model wrote.
 extract_findings() {
   : > "$work/findings-raw.txt"
   awk -v block="$work/findings-raw.txt" '
@@ -108,20 +227,11 @@ extract_findings() {
   echo "[]" > "$work/inline-comments.json"
   if [[ ! -s "$work/findings-raw.txt" ]]; then
     findings_state="none"
-  elif jq -c '
-      if type != "array" then error("the findings block is not an array") else . end
-      | map(select(type == "object"))
-      | to_entries
-      | map(.key as $index | .value | {
-          index: $index,
-          severity: ((.severity // "note") | tostring | ascii_downcase | gsub("[^a-z]"; "") | if . == "" then "note" else . end),
-          title: ((.title // "Finding") | tostring | gsub("[\\r\\n]+"; " ") | .[0:200]),
-          body: ((.body // "") | tostring | .[0:4000]),
-          path: (if (.path | type) == "string" and .path != "" then .path else null end),
-          line: ((.line | if type == "string" then (tonumber? // null) else . end)
-            | if type == "number" and . == floor and . > 0 then . else null end)
-        })
-    ' "$work/findings-raw.txt" > "$work/findings-parsed.json" 2> /dev/null && [[ -s "$work/findings-parsed.json" ]]; then
+  elif normalize_findings "$work/findings-raw.txt" || {
+      repair_json "$work/findings-raw.txt" > "$work/findings-repaired.txt" \
+        && normalize_findings "$work/findings-repaired.txt" \
+        && echo "::notice::The findings block from the model was not strict JSON and was repaired before parsing."
+    }; then
     mv "$work/findings-parsed.json" "$work/findings.json"
     findings_state="valid"
     awk "$heading_awk"'
@@ -144,11 +254,14 @@ extract_findings() {
     ' "$work/findings.json" > "$work/inline-comments.json"
   else
     findings_state="invalid"
-    echo "::warning::The findings block from the model is not valid JSON, so it is shown as returned."
+    echo "::warning::The findings block from the model could not be read as a JSON array of findings, so it is shown as returned."
   fi
   jq -Rrs 'sub("^\\s+"; "") | sub("\\s+$"; "")' "$work/model-clean.md" > "$work/model.md"
 }
 
+# Builds the review comment body in $work/review.md. $1 is a JSON file that maps
+# finding indexes to inline comment URLs; mapped findings are listed by title
+# with a link, and the others keep their full explanation.
 compose_review() {
   local urls=$1
   if [[ "$findings_state" == "valid" ]]; then
@@ -188,7 +301,7 @@ compose_review() {
     {
       cat "$work/model.md"
       printf '\n**Findings**: the model returned them in a format the bot could not read, so they are shown as returned.\n\n<details>\n<summary>Findings as returned</summary>\n\n````\n'
-      cat "$work/findings-raw.txt"
+      split_raw_findings "$work/findings-raw.txt"
       printf '````\n\n</details>\n'
     } > "$work/review-body.md"
   else
