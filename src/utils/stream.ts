@@ -81,10 +81,9 @@ export function handleStreamResponse<
       }
     }
 
-    await updateMessage(true);
     const cleanText = streamState.fullResponse.trim() || "(No response)";
-
     await onComplete(cleanText);
+    await updateMessage(true);
 
     const segments = splitText(cleanText, 2000);
     if (segments.length > 1) {

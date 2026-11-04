@@ -4,7 +4,7 @@ import {
   AutocompleteInteraction,
 } from "discord.js";
 import { makeRequest, getModels, buildSystemMessage } from "../api/ollama.js";
-import { logError } from "../utils/logger.js";
+import { log, logError, LogLevel } from "../utils/logger.js";
 import { replySplitInteraction, speakerName } from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
 import { getConfig } from "../config.js";
@@ -37,6 +37,26 @@ const data = new SlashCommandBuilder()
       .setDescription("Stream the response chunks (Experimental)")
       .setRequired(false),
   );
+
+function saveExchange(
+  channelID: string,
+  userID: string,
+  turn: number,
+  content: string,
+  reply: string,
+): void {
+  try {
+    addToUserHistory(
+      channelID,
+      userID,
+      turn,
+      { role: "user", content },
+      { role: "assistant", content: reply },
+    );
+  } catch (error) {
+    log.log(LogLevel.Error, "Failed to save /chat history", error);
+  }
+}
 
 const chat: BotCommand = {
   data,
@@ -96,13 +116,7 @@ const chat: BotCommand = {
         const responseText =
           response?.message?.content || "(No response from Ollama)";
 
-        addToUserHistory(
-          channelID,
-          userID,
-          turn,
-          { role: "user", content },
-          { role: "assistant", content: responseText },
-        );
+        saveExchange(channelID, userID, turn, content, responseText);
 
         await replySplitInteraction(interaction, responseText, true);
       } else {
@@ -114,15 +128,8 @@ const chat: BotCommand = {
         handleStreamResponse<OllamaChatResponse>(
           interaction,
           responseStream,
-          (cleanText) => {
-            addToUserHistory(
-              channelID,
-              userID,
-              turn,
-              { role: "user", content },
-              { role: "assistant", content: cleanText },
-            );
-          },
+          (cleanText) =>
+            saveExchange(channelID, userID, turn, content, cleanText),
         );
       }
     } catch (error) {

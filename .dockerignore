@@ -3,6 +3,7 @@ node_modules/
 .env
 .env.*
 dist/
+data/
 .git
 .github
 .vscode

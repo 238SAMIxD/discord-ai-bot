@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { Logger, LogLevel } from "./utils/logger.js";
+import { stopShards } from "./utils/shards.js";
 import type { ShardMessage } from "./types.js";
 
 dotenv.config();
@@ -57,7 +58,22 @@ manager.on("shardCreate", async (shard) => {
   });
 });
 
+let shuttingDown = false;
+
 manager.spawn().catch((error) => {
+  if (shuttingDown) return;
   log.log(LogLevel.Error, "Failed to spawn shards", error);
   process.exit(1);
+});
+
+process.once("SIGTERM", () => {
+  shuttingDown = true;
+  log.log(LogLevel.Info, "Stopping shards");
+  void stopShards(manager).then(
+    () => process.exit(0),
+    (error) => {
+      log.log(LogLevel.Error, "Failed to stop shards", error);
+      process.exit(1);
+    },
+  );
 });

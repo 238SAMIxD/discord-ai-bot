@@ -6,4 +6,9 @@ services:
         env_file: .env
         environment:
             - OLLAMA=http://host.docker.internal:11434
+        volumes:
+            - chat-history:/app/data
         restart: unless-stopped
+
+volumes:
+    chat-history:

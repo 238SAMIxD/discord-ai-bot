@@ -19,6 +19,7 @@ export interface Config {
   serverWaitTimeout: number;
   streamIdleTimeout: number;
   maxAttachmentTextLength: number;
+  chatHistoryDb: string;
 }
 
 function parseServers(value: string | undefined, envName: string): Server[] {
@@ -95,6 +96,8 @@ export function getConfig(): Config {
       process.env.MAX_ATTACHMENT_TEXT_LENGTH,
       8000,
     ),
+    chatHistoryDb:
+      process.env.CHAT_HISTORY_DB?.trim() || "./data/chat-history.db",
   };
 
   return cachedConfig;
