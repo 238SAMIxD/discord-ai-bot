@@ -9,7 +9,11 @@ import { replySplitInteraction } from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
 import { getConfig } from "../config.js";
 import { BotCommand, OllamaChatResponse, OllamaChatRequest } from "../types.js";
-import { getUserHistory, addToUserHistory } from "../state/conversations.js";
+import {
+  getUserHistory,
+  addToUserHistory,
+  startTurn,
+} from "../state/conversations.js";
 
 const data = new SlashCommandBuilder()
   .setName("chat")
@@ -73,6 +77,7 @@ const chat: BotCommand = {
         messagesToSend.push({ role: "system", content: systemMessage });
       }
 
+      const turn = startTurn();
       messagesToSend.push(...getUserHistory(channelID, userID));
       messagesToSend.push({ role: "user", content: prompt });
 
@@ -90,11 +95,13 @@ const chat: BotCommand = {
         const responseText =
           response?.message?.content || "(No response from Ollama)";
 
-        addToUserHistory(channelID, userID, { role: "user", content: prompt });
-        addToUserHistory(channelID, userID, {
-          role: "assistant",
-          content: responseText,
-        });
+        addToUserHistory(
+          channelID,
+          userID,
+          turn,
+          { role: "user", content: prompt },
+          { role: "assistant", content: responseText },
+        );
 
         await replySplitInteraction(interaction, responseText, true);
       } else {
@@ -107,14 +114,13 @@ const chat: BotCommand = {
           interaction,
           responseStream,
           (cleanText) => {
-            addToUserHistory(channelID, userID, {
-              role: "user",
-              content: prompt,
-            });
-            addToUserHistory(channelID, userID, {
-              role: "assistant",
-              content: cleanText,
-            });
+            addToUserHistory(
+              channelID,
+              userID,
+              turn,
+              { role: "user", content: prompt },
+              { role: "assistant", content: cleanText },
+            );
           },
         );
       }
