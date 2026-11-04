@@ -239,32 +239,62 @@ test("createStopButton shows the request's place in line while it waits", async 
   const stop = startStop(interaction);
 
   stop.queueStatus(2);
+  await delay(5);
   assert.equal(interaction.editReply.mock.callCount(), 0);
 
   await stop.show();
   stop.queueStatus(2);
+  await delay(5);
   assert.equal(
     lastContent(interaction),
     "Waiting in line: 2 requests ahead of you…",
   );
   stop.queueStatus(1);
+  await delay(5);
   assert.equal(
     lastContent(interaction),
     "Waiting in line: 1 request ahead of you…",
   );
   stop.queueStatus(0);
+  await delay(5);
   assert.equal(
     lastContent(interaction),
     "Waiting for the current answer to finish…",
   );
   assert.deepEqual(lastButtons(interaction), STOP);
   stop.queueStatus(null);
+  await delay(5);
   assert.equal(lastContent(interaction), "Generating…");
 
   const calls = interaction.editReply.mock.callCount();
   stop.complete();
   stop.queueStatus(0);
+  await delay(5);
   assert.equal(interaction.editReply.mock.callCount(), calls);
+  await stop.finish();
+});
+
+test("createStopButton sends only the latest place in line while an edit is in flight", async () => {
+  const interaction = fakeCommand();
+  const stop = startStop(interaction);
+  await stop.show();
+
+  stop.queueStatus(3);
+  stop.queueStatus(2);
+  stop.queueStatus(1);
+  await delay(5);
+  stop.queueStatus(1);
+  await delay(5);
+
+  assert.deepEqual(
+    edits(interaction)
+      .slice(1)
+      .map((reply) => (reply as { content: string }).content),
+    [
+      "Waiting in line: 3 requests ahead of you…",
+      "Waiting in line: 1 request ahead of you…",
+    ],
+  );
   await stop.finish();
 });
 

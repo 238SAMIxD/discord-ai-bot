@@ -25,6 +25,7 @@ import { addPendingChat, removePendingChat } from "../state/pendingChats.js";
 import { createStopButton } from "../utils/stopButton.js";
 import { buildBotContext } from "../utils/botContext.js";
 import {
+  cancelSlowmode,
   finishSlowmode,
   slowmodeMessage,
   tryStartSlowmode,
@@ -184,6 +185,7 @@ const chat: BotCommand = {
           content: "Cancelled because your conversation history was cleared.",
         });
       } else if (error instanceof ServersBusyError) {
+        cancelSlowmode(userID);
         await interaction.editReply({
           content: BUSY_MESSAGE,
           components: [],

@@ -109,7 +109,9 @@ function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 /**
  * Sends a request to the first free server, trying the next one when a server
  * fails. Requests that find every server busy wait in a first-come,
- * first-served queue shared by everyone using the same server list.
+ * first-served queue shared by everyone using the same server list. The queue
+ * belongs to the `servers` array object itself, so callers must pass the same
+ * array every time, such as the one from `getConfig()`, not a copy.
  */
 export async function makeBaseRequest<TResponse, TRequest = object>(
   servers: Server[],

@@ -18,6 +18,7 @@ import { extractTextFromPDF } from "../utils/pdf.js";
 import { createStopButton } from "../utils/stopButton.js";
 import { buildBotContext } from "../utils/botContext.js";
 import {
+  cancelSlowmode,
   finishSlowmode,
   slowmodeMessage,
   tryStartSlowmode,
@@ -275,6 +276,7 @@ const generate: BotCommand = {
       if (stop.signal.aborted) {
         await interaction.editReply({ content: "Stopped." });
       } else if (error instanceof ServersBusyError) {
+        cancelSlowmode(interaction.user.id);
         await interaction.editReply({
           content: BUSY_MESSAGE,
           components: [],

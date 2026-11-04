@@ -52,6 +52,29 @@ export function createStopButton(
   running.set(interaction.id, { userId: interaction.user.id, controller });
   let shown = false;
   let completed = false;
+  let shownStatus = "Generating…";
+  let wantedStatus: string | undefined;
+  let statusEdit: Promise<void> | undefined;
+
+  const sendStatus = async () => {
+    while (
+      wantedStatus !== undefined &&
+      wantedStatus !== shownStatus &&
+      !completed
+    ) {
+      const content = wantedStatus;
+      wantedStatus = undefined;
+      await interaction
+        .editReply({
+          content,
+          components: [stopButtonRow(interaction.id, false)],
+        })
+        .catch(logError);
+      shownStatus = content;
+    }
+    wantedStatus = undefined;
+    statusEdit = undefined;
+  };
 
   return {
     signal: controller.signal,
@@ -64,12 +87,8 @@ export function createStopButton(
     },
     queueStatus(ahead) {
       if (!shown || completed) return;
-      interaction
-        .editReply({
-          content: queueMessage(ahead),
-          components: [stopButtonRow(interaction.id, false)],
-        })
-        .catch(logError);
+      wantedStatus = queueMessage(ahead);
+      statusEdit ??= sendStatus();
     },
     complete() {
       running.delete(interaction.id);

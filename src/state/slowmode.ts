@@ -14,12 +14,11 @@ export function tryStartSlowmode(userId: string, now = Date.now()): number {
   if (delay <= 0) return 0;
   if (running.has(userId)) return Infinity;
 
-  const finished = finishedAt.get(userId);
-  if (finished !== undefined) {
-    const left = finished + delay - now;
-    if (left > 0) return left;
-    finishedAt.delete(userId);
+  for (const [id, finished] of finishedAt) {
+    if (finished + delay <= now) finishedAt.delete(id);
   }
+  const finished = finishedAt.get(userId);
+  if (finished !== undefined) return finished + delay - now;
 
   running.add(userId);
   return 0;
@@ -32,6 +31,14 @@ export function tryStartSlowmode(userId: string, now = Date.now()): number {
 export function finishSlowmode(userId: string, now = Date.now()): void {
   if (!running.delete(userId)) return;
   finishedAt.set(userId, now);
+}
+
+/**
+ * Ends a request started with {@link tryStartSlowmode} without starting a
+ * cooldown, for a request that never reached a server.
+ */
+export function cancelSlowmode(userId: string): void {
+  running.delete(userId);
 }
 
 /**

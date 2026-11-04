@@ -2,6 +2,7 @@ import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { clearConfigCache } from "../config.js";
 import {
+  cancelSlowmode,
   finishSlowmode,
   resetSlowmode,
   slowmodeMessage,
@@ -58,6 +59,25 @@ test("finishSlowmode ignores a user without a running request", () => {
   finishSlowmode("1", 0);
 
   assert.equal(tryStartSlowmode("1", 1), 0);
+});
+
+test("cancelSlowmode frees the user without starting a cooldown", () => {
+  tryStartSlowmode("1", 0);
+  cancelSlowmode("1");
+
+  assert.equal(tryStartSlowmode("1", 1), 0);
+});
+
+test("tryStartSlowmode drops every user's expired cooldown", () => {
+  tryStartSlowmode("1", 0);
+  finishSlowmode("1", 0);
+  tryStartSlowmode("2", 0);
+  finishSlowmode("2", 5_000);
+
+  tryStartSlowmode("3", 12_000);
+
+  assert.equal(tryStartSlowmode("1", 12_000), 0);
+  assert.equal(tryStartSlowmode("2", 12_000), 3_000);
 });
 
 test("slowmodeMessage says when the user can ask again", () => {
