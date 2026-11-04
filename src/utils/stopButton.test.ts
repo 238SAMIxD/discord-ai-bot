@@ -46,12 +46,17 @@ const STOP = [{ label: "Stop", style: ButtonStyle.Danger, disabled: false }];
 const STOPPED = [
   { label: "Stopped", style: ButtonStyle.Secondary, disabled: true },
 ];
+const STATS = [
+  { label: "2 tokens", style: ButtonStyle.Primary, disabled: false },
+  { label: "2.0 tokens/s", style: ButtonStyle.Success, disabled: false },
+];
 const options = { timeout: 5_000 };
 
 setLogger(new Logger(true, "stopButton.test"));
 process.env.TOKEN = "test-token";
 process.env.USE_SYSTEM = "false";
 process.env.USE_MODEL_SYSTEM = "false";
+process.env.SHOW_STATS = "true";
 
 before(() => openChatHistory(":memory:"));
 after(() => closeChatHistory());
@@ -235,6 +240,17 @@ test("createStopButton leaves a disabled Stopped button on a reply stopped partw
   assert.deepEqual(lastButtons(interaction), STOPPED);
 });
 
+test("createStopButton leaves the buttons of an answered reply alone", async () => {
+  const interaction = fakeCommand();
+  const stop = startStop(interaction);
+
+  await stop.show();
+  stop.complete();
+  await stop.finish();
+
+  assert.equal(interaction.editReply.mock.callCount(), 1);
+});
+
 test("createStopButton doesn't edit a reply it never showed the button on", async () => {
   const interaction = fakeCommand();
   const stop = startStop(interaction);
@@ -376,6 +392,51 @@ test(
   },
 );
 
+test(
+  "an answered /chat swaps the Stop button for its stats buttons",
+  options,
+  async (t) => {
+    const server = await startFakeServer(t);
+    const request = server.nextRequest();
+    const interaction = fakeCommand({ prompt: "Question" });
+    const running = run(chat, interaction);
+    const held = await request;
+
+    held.answer({
+      message: { role: "assistant", content: "Answer" },
+      eval_count: 2,
+      eval_duration: 1_000_000_000,
+    });
+    await running;
+
+    assert.equal(lastContent(interaction), "Answer");
+    assert.deepEqual(lastButtons(interaction), STATS);
+  },
+);
+
+test(
+  "a streamed /generate swaps the Stop button for its stats buttons",
+  options,
+  async (t) => {
+    const server = await startFakeServer(t);
+    const request = server.nextRequest();
+    const interaction = fakeCommand({ prompt: "Write a story", stream: true });
+    const running = run(generate, interaction);
+    const held = await request;
+
+    held.answer({
+      response: "Story",
+      done: true,
+      eval_count: 2,
+      eval_duration: 1_000_000_000,
+    });
+    await running;
+
+    assert.equal(lastContent(interaction), "Story");
+    assert.deepEqual(lastButtons(interaction), STATS);
+  },
+);
+
 test("stopping /generate closes its request", options, async (t) => {
   const server = await startFakeServer(t);
   const request = server.nextRequest();
@@ -442,7 +503,7 @@ test(
 );
 
 test(
-  "a click after /chat has its answer doesn't turn a failed reply into Stopped.",
+  "a failed /chat reply after its answer arrived isn't Stopped and has no Stop button",
   options,
   async (t) => {
     const server = await startFakeServer(t);
@@ -468,7 +529,10 @@ test(
         flags: MessageFlags.Ephemeral,
       },
     ]);
-    assert.equal(lastContent(interaction), "Failed to run chat.");
+    assert.deepEqual(edits(interaction).at(-1), {
+      content: "Failed to run chat.",
+      components: [],
+    });
     assert.deepEqual(getUserHistory(interaction.channelId, OWNER), [
       { role: "user", content: `User ${OWNER}: Question` },
       { role: "assistant", content: "Answer" },

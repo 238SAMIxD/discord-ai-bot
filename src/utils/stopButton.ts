@@ -44,6 +44,7 @@ export function createStopButton(
   const controller = new AbortController();
   running.set(interaction.id, { userId: interaction.user.id, controller });
   let shown = false;
+  let completed = false;
 
   return {
     signal: controller.signal,
@@ -56,10 +57,11 @@ export function createStopButton(
     },
     complete() {
       running.delete(interaction.id);
+      completed = true;
     },
     async finish(markStopped = false) {
       running.delete(interaction.id);
-      if (!shown) return;
+      if (!shown || completed) return;
       await interaction
         .editReply({
           components: markStopped ? [stopButtonRow(interaction.id, true)] : [],

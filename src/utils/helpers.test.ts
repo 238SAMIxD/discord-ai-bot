@@ -1,9 +1,23 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
-import { GuildMember } from "discord.js";
-import { parseJSONMessage, parsePositiveInt, speakerName } from "./helpers.js";
+import { ActionRowBuilder, GuildMember } from "discord.js";
+import {
+  parseJSONMessage,
+  parsePositiveInt,
+  replySplitInteraction,
+  speakerName,
+} from "./helpers.js";
 
-import type { BaseInteraction } from "discord.js";
+import type {
+  BaseInteraction,
+  ButtonBuilder,
+  CommandInteraction,
+} from "discord.js";
+
+interface Reply {
+  content: string;
+  components: ActionRowBuilder<ButtonBuilder>[];
+}
 
 function interactionFrom(member: unknown): BaseInteraction {
   return {
@@ -65,4 +79,29 @@ test("speakerName falls back to the user's display name without a nickname or in
   assert.equal(speakerName(interactionFrom(cachedMember(null))), "Alice A.");
   assert.equal(speakerName(interactionFrom({ nick: null })), "Alice A.");
   assert.equal(speakerName(interactionFrom(null)), "Alice A.");
+});
+
+test("replySplitInteraction puts the components on the last message only", async () => {
+  const row = new ActionRowBuilder<ButtonBuilder>();
+  const interaction = {
+    editReply: mock.fn(async (_reply: Reply) => undefined),
+    followUp: mock.fn(async (_reply: Reply) => undefined),
+  };
+  const reply = interaction as unknown as CommandInteraction;
+
+  await replySplitInteraction(reply, "Short answer", true, [row]);
+  assert.deepEqual(interaction.editReply.mock.calls[0]?.arguments, [
+    { content: "Short answer", components: [row] },
+  ]);
+
+  await replySplitInteraction(reply, "word ".repeat(500), true, [row]);
+  assert.deepEqual(
+    interaction.editReply.mock.calls[1]?.arguments[0]?.components,
+    [],
+  );
+  assert.equal(interaction.followUp.mock.callCount(), 1);
+  assert.deepEqual(
+    interaction.followUp.mock.calls[0]?.arguments[0]?.components,
+    [row],
+  );
 });

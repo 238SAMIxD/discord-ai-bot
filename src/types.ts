@@ -55,21 +55,25 @@ export interface OllamaGenerateRequest {
   images?: string[];
 }
 
-/**
- * Individual chunk from the Ollama `/api/generate` streaming response.
- */
-export interface OllamaGenerateResponse {
-  model: string;
-  created_at: string;
-  response: string;
-  done: boolean;
-  context?: number[];
+export interface OllamaStats {
+  model?: string;
   total_duration?: number;
   load_duration?: number;
   prompt_eval_count?: number;
   prompt_eval_duration?: number;
   eval_count?: number;
   eval_duration?: number;
+}
+
+/**
+ * Individual chunk from the Ollama `/api/generate` streaming response.
+ */
+export interface OllamaGenerateResponse extends OllamaStats {
+  model: string;
+  created_at: string;
+  response: string;
+  done: boolean;
+  context?: number[];
 }
 
 /**
@@ -84,7 +88,7 @@ export interface OllamaChatRequest {
 /**
  * Individual chunk from the Ollama `/api/chat` streaming response.
  */
-export interface OllamaChatResponse {
+export interface OllamaChatResponse extends OllamaStats {
   model: string;
   created_at: string;
   message: {
@@ -92,12 +96,6 @@ export interface OllamaChatResponse {
     content: string;
   };
   done: boolean;
-  total_duration?: number;
-  load_duration?: number;
-  prompt_eval_count?: number;
-  prompt_eval_duration?: number;
-  eval_count?: number;
-  eval_duration?: number;
 }
 
 export type OllamaResponse = OllamaGenerateResponse | OllamaChatResponse;

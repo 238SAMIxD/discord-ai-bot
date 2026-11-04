@@ -7,6 +7,7 @@ import { makeRequest, getModels, buildSystemMessage } from "../api/ollama.js";
 import { logError } from "../utils/logger.js";
 import { replySplitInteraction, downloadAttachment } from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
+import { statsComponents } from "../utils/stats.js";
 import { extractTextFromPDF } from "../utils/pdf.js";
 import { createStopButton } from "../utils/stopButton.js";
 import { getConfig } from "../config.js";
@@ -212,7 +213,12 @@ const generate: BotCommand = {
         stop.complete();
         const responseText = response?.response || "(No response from Ollama)";
 
-        await replySplitInteraction(interaction, responseText, true);
+        await replySplitInteraction(
+          interaction,
+          responseText,
+          true,
+          statsComponents(response),
+        );
       } else {
         const responseStream = await makeRequest<
           NodeJS.ReadableStream,
@@ -231,7 +237,10 @@ const generate: BotCommand = {
         await interaction.editReply({ content: "Stopped." });
       } else {
         logError(error);
-        await interaction.editReply({ content: "Failed to run generate." });
+        await interaction.editReply({
+          content: "Failed to run generate.",
+          components: [],
+        });
       }
     } finally {
       await stop.finish(stoppedPartway);

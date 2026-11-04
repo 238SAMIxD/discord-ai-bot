@@ -96,6 +96,26 @@ test("interactionCreate runs autocomplete in an allowed channel", async (t) => {
   assert.equal(interaction.respond.mock.callCount(), 0);
 });
 
+test("interactionCreate answers a stats button with a private breakdown", async () => {
+  const interaction = fakeInteraction("button", "111", "stats:tokens:::2s:::");
+  await event.execute(interaction as unknown as Interaction);
+  assert.equal(interaction.reply.mock.callCount(), 1);
+  const [options] = interaction.reply.mock.calls[0]?.arguments ?? [];
+  assert.equal(options?.flags, MessageFlags.Ephemeral);
+  assert.equal(options?.embeds?.length, 1);
+});
+
+test("interactionCreate refuses a stats button in a blocked channel", async () => {
+  const interaction = fakeInteraction("button", "333", "stats:tokens:::2s:::");
+  await event.execute(interaction as unknown as Interaction);
+  assert.deepEqual(interaction.reply.mock.calls[0]?.arguments, [
+    {
+      content: "This bot isn't enabled in this channel.",
+      flags: MessageFlags.Ephemeral,
+    },
+  ]);
+});
+
 test("interactionCreate stops a running request when its owner clicks Stop", async () => {
   const command = {
     id: "500",
@@ -128,7 +148,7 @@ test("interactionCreate sends a Stop button click to the Stop button handler", a
   assert.equal(interaction.deferUpdate.mock.callCount(), 0);
 });
 
-test("interactionCreate ignores buttons that aren't Stop buttons", async () => {
+test("interactionCreate ignores buttons it does not own", async () => {
   const interaction = fakeInteraction("button", "111", "other");
   await event.execute(interaction as unknown as Interaction);
   assert.equal(interaction.reply.mock.callCount(), 0);

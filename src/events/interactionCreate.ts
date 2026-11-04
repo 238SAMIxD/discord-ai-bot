@@ -4,6 +4,9 @@ import type { Event } from "./index.js";
 import { getCommands } from "../commands/commands.js";
 import { isChannelAllowed } from "../utils/channels.js";
 import { handleStopButton, isStopButton } from "../utils/stopButton.js";
+import { isStatsButton, replyWithStats } from "../utils/stats.js";
+
+const CHANNEL_NOT_ALLOWED = "This bot isn't enabled in this channel.";
 
 const event: Event<Events.InteractionCreate> = {
   name: Events.InteractionCreate,
@@ -28,12 +31,21 @@ const event: Event<Events.InteractionCreate> = {
     }
 
     if (interaction.isButton()) {
-      if (isStopButton(interaction)) {
-        try {
+      try {
+        if (isStopButton(interaction)) {
           await handleStopButton(interaction);
-        } catch (error) {
-          logError(error);
+        } else if (isStatsButton(interaction)) {
+          if (await isChannelAllowed(interaction)) {
+            await replyWithStats(interaction);
+          } else {
+            await interaction.reply({
+              content: CHANNEL_NOT_ALLOWED,
+              flags: MessageFlags.Ephemeral,
+            });
+          }
         }
+      } catch (error) {
+        logError(error);
       }
       return;
     }
@@ -48,7 +60,7 @@ const event: Event<Events.InteractionCreate> = {
     if (!(await isChannelAllowed(interaction))) {
       try {
         await interaction.reply({
-          content: "This bot isn't enabled in this channel.",
+          content: CHANNEL_NOT_ALLOWED,
           flags: MessageFlags.Ephemeral,
         });
       } catch (error) {

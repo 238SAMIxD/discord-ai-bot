@@ -102,6 +102,7 @@ const text2img: BotCommand = {
       await interaction.editReply({
         content: `Here are images from prompt \`${prompt}\``,
         files: images,
+        components: [],
       });
     } catch (error) {
       if (stop.signal.aborted) {
@@ -112,6 +113,7 @@ const text2img: BotCommand = {
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply({
           content: "Error, please check the console",
+          components: [],
         });
       } else {
         await interaction.reply({

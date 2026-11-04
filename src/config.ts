@@ -20,6 +20,7 @@ export interface Config {
   streamIdleTimeout: number;
   maxAttachmentTextLength: number;
   chatHistoryDb: string;
+  showStats: boolean;
 }
 
 function parseServers(value: string | undefined, envName: string): Server[] {
@@ -98,6 +99,7 @@ export function getConfig(): Config {
     ),
     chatHistoryDb:
       process.env.CHAT_HISTORY_DB?.trim() || "./data/chat-history.db",
+    showStats: getBoolean(process.env.SHOW_STATS?.trim() || "true"),
   };
 
   return cachedConfig;
