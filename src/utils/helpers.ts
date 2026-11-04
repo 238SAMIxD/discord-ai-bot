@@ -1,6 +1,7 @@
-import { CommandInteraction, Message } from "discord.js";
+import { CommandInteraction, GuildMember, Message } from "discord.js";
 import axios from "axios";
 import type { ResponseType } from "axios";
+import type { BaseInteraction } from "discord.js";
 
 export function splitText(str: string, length: number): string[] {
   str = str
@@ -194,4 +195,10 @@ export async function replySplitInteraction(
     replyMessages.push(nextMessage);
   }
   return replyMessages;
+}
+
+export function speakerName(interaction: BaseInteraction): string {
+  const { member, user } = interaction;
+  if (member instanceof GuildMember) return member.displayName;
+  return member?.nick ?? user.displayName;
 }

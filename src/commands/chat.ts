@@ -5,7 +5,7 @@ import {
 } from "discord.js";
 import { makeRequest, getModels, buildSystemMessage } from "../api/ollama.js";
 import { logError } from "../utils/logger.js";
-import { replySplitInteraction } from "../utils/helpers.js";
+import { replySplitInteraction, speakerName } from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
 import { getConfig } from "../config.js";
 import { BotCommand, OllamaChatResponse, OllamaChatRequest } from "../types.js";
@@ -66,6 +66,7 @@ const chat: BotCommand = {
       const stream = interaction.options.getBoolean("stream") ?? false;
       const channelID = interaction.channelId ?? "";
       const userID = interaction.user.id;
+      const content = `${speakerName(interaction)}: ${prompt}`;
 
       const systemMessage = await buildSystemMessage(model);
       const messagesToSend: {
@@ -79,7 +80,7 @@ const chat: BotCommand = {
 
       const turn = startTurn();
       messagesToSend.push(...getUserHistory(channelID, userID));
-      messagesToSend.push({ role: "user", content: prompt });
+      messagesToSend.push({ role: "user", content });
 
       const payload: OllamaChatRequest = {
         model,
@@ -99,7 +100,7 @@ const chat: BotCommand = {
           channelID,
           userID,
           turn,
-          { role: "user", content: prompt },
+          { role: "user", content },
           { role: "assistant", content: responseText },
         );
 
@@ -118,7 +119,7 @@ const chat: BotCommand = {
               channelID,
               userID,
               turn,
-              { role: "user", content: prompt },
+              { role: "user", content },
               { role: "assistant", content: cleanText },
             );
           },
