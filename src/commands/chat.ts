@@ -16,6 +16,7 @@ import {
   startTurn,
 } from "../state/conversations.js";
 import { addPendingChat, removePendingChat } from "../state/pendingChats.js";
+import { createStopButton } from "../utils/stopButton.js";
 
 const data = new SlashCommandBuilder()
   .setName("chat")
@@ -84,14 +85,18 @@ const chat: BotCommand = {
     const channelID = interaction.channelId ?? "";
     const userID = interaction.user.id;
     const pending = addPendingChat(channelID, userID);
+    const stop = createStopButton(interaction);
+    const signal = AbortSignal.any([pending.signal, stop.signal]);
+    let stoppedPartway = false;
     try {
       await interaction.deferReply();
+      await stop.show();
       const prompt = interaction.options.getString("prompt", true);
       const model = interaction.options.getString("model") ?? getConfig().model;
       const stream = interaction.options.getBoolean("stream") ?? false;
       const content = `${speakerName(interaction)}: ${prompt}`;
 
-      const systemMessage = await buildSystemMessage(model, pending.signal);
+      const systemMessage = await buildSystemMessage(model, signal);
       const messagesToSend: {
         role: "user" | "assistant" | "system";
         content: string;
@@ -113,6 +118,7 @@ const chat: BotCommand = {
 
       const saveReply = (reply: string) => {
         removePendingChat(channelID, userID, pending);
+        stop.complete();
         saveExchange(channelID, userID, turn, content, reply);
       };
 
@@ -120,7 +126,7 @@ const chat: BotCommand = {
         const response = await makeRequest<
           OllamaChatResponse,
           OllamaChatRequest
-        >("/api/chat", "post", payload, "json", pending.signal);
+        >("/api/chat", "post", payload, "json", signal);
         const responseText =
           response?.message?.content || "(No response from Ollama)";
 
@@ -136,16 +142,19 @@ const chat: BotCommand = {
         const responseStream = await makeRequest<
           NodeJS.ReadableStream,
           OllamaChatRequest
-        >("/api/chat", "post", payload, "stream", pending.signal);
+        >("/api/chat", "post", payload, "stream", signal);
 
-        await handleStreamResponse<OllamaChatResponse>(
+        stoppedPartway = await handleStreamResponse<OllamaChatResponse>(
           interaction,
           responseStream,
           saveReply,
+          stop.signal,
         );
       }
     } catch (error) {
-      if (pending.signal.aborted) {
+      if (stop.signal.aborted) {
+        await interaction.editReply({ content: "Stopped." });
+      } else if (pending.signal.aborted) {
         await interaction.editReply({
           content: "Cancelled because your conversation history was cleared.",
         });
@@ -155,6 +164,7 @@ const chat: BotCommand = {
       }
     } finally {
       removePendingChat(channelID, userID, pending);
+      await stop.finish(stoppedPartway);
     }
   },
 };

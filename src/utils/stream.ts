@@ -20,7 +20,8 @@ export async function handleStreamResponse<
   interaction: ChatInputCommandInteraction,
   responseStream: NodeJS.ReadableStream,
   onComplete: (fullText: string) => void | Promise<void>,
-): Promise<void> {
+  stopSignal?: AbortSignal,
+): Promise<boolean> {
   const streamState = {
     fullResponse: "",
     buffer: "",
@@ -31,10 +32,10 @@ export async function handleStreamResponse<
 
   let isEditing = false;
   let pendingEdit = false;
-  let stopped = false;
+  let ended = false;
 
   const updateMessage = async (force = false) => {
-    if (stopped) return;
+    if (ended) return;
     if (isEditing) {
       pendingEdit = true;
       return;
@@ -83,18 +84,24 @@ export async function handleStreamResponse<
     void updateMessage();
   });
 
-  try {
-    await finished(responseStream);
-  } catch (error) {
-    stopped = true;
-    await streamState.editPromise.catch(() => undefined);
-    throw error;
-  }
-  stopped = true;
+  const failure = await finished(responseStream).then(
+    () => undefined,
+    (error: unknown) => ({ error }),
+  );
+  ended = true;
   readLine(streamState.buffer);
 
+  const stopped =
+    failure !== undefined &&
+    stopSignal?.aborted === true &&
+    streamState.fullResponse.trim().length > 0;
+  if (failure && !stopped) {
+    await streamState.editPromise.catch(() => undefined);
+    throw failure.error;
+  }
+
   const cleanText = streamState.fullResponse.trim() || "(No response)";
-  await onComplete(cleanText);
+  if (!stopped) await onComplete(cleanText);
   await streamState.editPromise.catch(() => undefined);
 
   try {
@@ -102,9 +109,11 @@ export async function handleStreamResponse<
       interaction,
       cleanText,
       true,
-      statsComponents(streamState.stats),
+      statsComponents(stopped ? undefined : streamState.stats),
     );
   } catch (err) {
     logError(err);
   }
+
+  return stopped;
 }

@@ -11,7 +11,7 @@ import { getConfig } from "../config.js";
 import type { ButtonInteraction } from "discord.js";
 import type { OllamaStats } from "../types.js";
 
-export const STATS_BUTTON_PREFIX = "stats:";
+const STATS_BUTTON_PREFIX = "stats:";
 
 const PACKED_FIELDS = [
   "prompt_eval_count",
@@ -231,4 +231,8 @@ export async function replyWithStats(
     ],
     flags: MessageFlags.Ephemeral,
   });
+}
+
+export function isStatsButton(interaction: ButtonInteraction): boolean {
+  return interaction.customId.startsWith(STATS_BUTTON_PREFIX);
 }

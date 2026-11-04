@@ -31,6 +31,10 @@ function fakeInteraction() {
   };
 }
 
+function contentOf(reply: string | FinalReply | undefined) {
+  return typeof reply === "string" ? reply : reply?.content;
+}
+
 function buttonLabels(reply: FinalReply | undefined) {
   return reply?.components.map((row) =>
     row.components.map(
@@ -79,11 +83,12 @@ test("handleStreamResponse lets an edit in flight finish before it rejects", asy
     ),
     followUp: mock.fn(async () => undefined),
   };
+  const onComplete = mock.fn(() => undefined);
   const stream = new PassThrough();
   const outcome = handleStreamResponse(
     interaction as unknown as ChatInputCommandInteraction,
     stream,
-    () => undefined,
+    onComplete,
   ).then(
     () => "resolved",
     (error: Error) => error.message,
@@ -100,6 +105,7 @@ test("handleStreamResponse lets an edit in flight finish before it rejects", asy
   finishEdit();
   assert.equal(await outcome, "Stream failed");
   assert.equal(interaction.editReply.mock.callCount(), 1);
+  assert.equal(onComplete.mock.callCount(), 0);
 });
 
 test("handleStreamResponse puts the stats from the last chunk on the final message", async () => {
@@ -126,7 +132,7 @@ test("handleStreamResponse puts the stats from the last chunk on the final messa
   await done;
 
   const final = interaction.editReply.mock.calls.at(-1)?.arguments[0];
-  assert.equal(typeof final === "string" ? final : final?.content, "Hello");
+  assert.equal(contentOf(final), "Hello");
   assert.deepEqual(buttonLabels(final as FinalReply), [
     ["llama3.2:3b", "2 tokens", "2.0 tokens/s"],
     ["1.5 s total"],
@@ -159,4 +165,100 @@ test("handleStreamResponse puts the stats buttons on the last message of a long 
     buttonLabels(interaction.followUp.mock.calls[0]?.arguments[0]),
     [["500 tokens", "250.0 tokens/s"]],
   );
+});
+
+function stoppableStream() {
+  const saved: string[] = [];
+  const interaction = fakeInteraction();
+  const stream = new PassThrough();
+  const stop = new AbortController();
+  const outcome = handleStreamResponse(
+    interaction as unknown as ChatInputCommandInteraction,
+    stream,
+    (text) => {
+      saved.push(text);
+    },
+    stop.signal,
+  );
+  const stopStream = () => {
+    stop.abort();
+    stream.destroy(new Error("Stopped"));
+  };
+  return { saved, interaction, stream, outcome, stopStream };
+}
+
+test("handleStreamResponse keeps the text so far without saving it once stopped", async () => {
+  const { saved, interaction, stream, outcome, stopStream } = stoppableStream();
+
+  stream.write(`${JSON.stringify({ message: { content: "Hello" } })}
+`);
+  await setImmediate();
+  stopStream();
+
+  assert.equal(await outcome, true);
+  assert.deepEqual(saved, []);
+  assert.equal(
+    contentOf(interaction.editReply.mock.calls.at(-1)?.arguments[0]),
+    "Hello",
+  );
+});
+
+test("handleStreamResponse keeps a last chunk that arrived without a newline once stopped", async () => {
+  const { saved, interaction, stream, outcome, stopStream } = stoppableStream();
+
+  stream.write(JSON.stringify({ message: { content: "Hello" } }));
+  await setImmediate();
+  stopStream();
+
+  assert.equal(await outcome, true);
+  assert.deepEqual(saved, []);
+  assert.equal(
+    contentOf(interaction.editReply.mock.calls.at(-1)?.arguments[0]),
+    "Hello",
+  );
+});
+
+test("handleStreamResponse leaves the stats buttons off a stopped reply", async () => {
+  const { interaction, stream, outcome, stopStream } = stoppableStream();
+
+  stream.write(
+    `${JSON.stringify({ message: { content: "Hello" }, done: true, eval_count: 2 })}
+`,
+  );
+  await setImmediate();
+  stopStream();
+
+  assert.equal(await outcome, true);
+  const final = interaction.editReply.mock.calls.at(-1)?.arguments[0];
+  assert.deepEqual(buttonLabels(final as FinalReply), []);
+});
+
+test("handleStreamResponse posts the rest of a long stopped reply as follow-ups", async () => {
+  const { interaction, stream, outcome, stopStream } = stoppableStream();
+  const text = "Hello ".repeat(400).trim();
+
+  stream.write(`${JSON.stringify({ message: { content: text } })}
+`);
+  await setImmediate();
+  stopStream();
+
+  assert.equal(await outcome, true);
+  const first = contentOf(
+    interaction.editReply.mock.calls.at(-1)?.arguments[0],
+  );
+  const rest = interaction.followUp.mock.calls.map(
+    (call) => call.arguments[0].content,
+  );
+  assert.equal(rest.length, 1);
+  assert.equal(`${first} ${rest[0]}`, text);
+});
+
+test("handleStreamResponse rejects when it is stopped before any text arrives", async () => {
+  const { saved, interaction, outcome, stopStream } = stoppableStream();
+
+  stopStream();
+
+  await assert.rejects(outcome, /Stopped/);
+  assert.deepEqual(saved, []);
+  assert.equal(interaction.editReply.mock.callCount(), 0);
 });

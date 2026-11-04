@@ -2,9 +2,10 @@ import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { MessageFlags } from "discord.js";
 import { getCommands } from "../commands/commands.js";
+import { createStopButton } from "../utils/stopButton.js";
 import event from "./interactionCreate.js";
 
-import type { Interaction } from "discord.js";
+import type { ChatInputCommandInteraction, Interaction } from "discord.js";
 import type { BotCommand } from "../types.js";
 
 process.env.TOKEN = "test-token";
@@ -26,6 +27,7 @@ function fakeInteraction(
     commandName: "chat",
     customId,
     channelId,
+    user: { id: "1" },
     channel: { parentId: null, isThread: () => false },
     deferred: false,
     replied: false,
@@ -35,6 +37,7 @@ function fakeInteraction(
     isChatInputCommand: () => type === "command",
     respond: mock.fn(),
     reply: mock.fn(),
+    deferUpdate: mock.fn(),
   };
 }
 
@@ -102,8 +105,52 @@ test("interactionCreate answers a stats button with a private breakdown", async 
   assert.equal(options?.embeds?.length, 1);
 });
 
+test("interactionCreate refuses a stats button in a blocked channel", async () => {
+  const interaction = fakeInteraction("button", "333", "stats:tokens:::2s:::");
+  await event.execute(interaction as unknown as Interaction);
+  assert.deepEqual(interaction.reply.mock.calls[0]?.arguments, [
+    {
+      content: "This bot isn't enabled in this channel.",
+      flags: MessageFlags.Ephemeral,
+    },
+  ]);
+});
+
+test("interactionCreate stops a running request when its owner clicks Stop", async () => {
+  const command = {
+    id: "500",
+    user: { id: "1" },
+    editReply: mock.fn(async (_reply: unknown) => ({})),
+  };
+  const stop = createStopButton(
+    command as unknown as ChatInputCommandInteraction,
+  );
+  await stop.show();
+
+  const interaction = fakeInteraction("button", "111", "stop:500");
+  await event.execute(interaction as unknown as Interaction);
+
+  assert.equal(stop.signal.aborted, true);
+  assert.equal(interaction.deferUpdate.mock.callCount(), 1);
+  assert.equal(interaction.reply.mock.callCount(), 0);
+  await stop.finish();
+});
+
+test("interactionCreate sends a Stop button click to the Stop button handler", async () => {
+  const interaction = fakeInteraction("button", "111", "stop:404");
+  await event.execute(interaction as unknown as Interaction);
+  assert.deepEqual(interaction.reply.mock.calls[0]?.arguments, [
+    {
+      content: "This response is no longer running.",
+      flags: MessageFlags.Ephemeral,
+    },
+  ]);
+  assert.equal(interaction.deferUpdate.mock.callCount(), 0);
+});
+
 test("interactionCreate ignores buttons it does not own", async () => {
-  const interaction = fakeInteraction("button", "111", "other:button");
+  const interaction = fakeInteraction("button", "111", "other");
   await event.execute(interaction as unknown as Interaction);
   assert.equal(interaction.reply.mock.callCount(), 0);
+  assert.equal(interaction.deferUpdate.mock.callCount(), 0);
 });

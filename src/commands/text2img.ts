@@ -5,6 +5,7 @@ import {
 } from "discord.js";
 import { makeStableDiffusionRequest } from "../api/stableDiffusion.js";
 import { logError } from "../utils/logger.js";
+import { createStopButton } from "../utils/stopButton.js";
 import { BotCommand, SDResponse, SDTxt2ImgRequest } from "../types.js";
 
 const data = new SlashCommandBuilder()
@@ -66,8 +67,10 @@ const data = new SlashCommandBuilder()
 const text2img: BotCommand = {
   data,
   async execute(interaction: ChatInputCommandInteraction) {
+    const stop = createStopButton(interaction);
     try {
       await interaction.deferReply();
+      await stop.show();
       const prompt = interaction.options.getString("prompt", true);
       const width = interaction.options.getInteger("width") ?? 256;
       const height = interaction.options.getInteger("height") ?? 256;
@@ -91,15 +94,21 @@ const text2img: BotCommand = {
       const stableDiffusionResponse = await makeStableDiffusionRequest<
         SDResponse,
         SDTxt2ImgRequest
-      >("/sdapi/v1/txt2img", "post", payload);
+      >("/sdapi/v1/txt2img", "post", payload, stop.signal);
+      stop.complete();
       const images = (stableDiffusionResponse?.images ?? []).map((image) =>
         Buffer.from(image, "base64"),
       );
       await interaction.editReply({
         content: `Here are images from prompt \`${prompt}\``,
         files: images,
+        components: [],
       });
     } catch (error) {
+      if (stop.signal.aborted) {
+        await interaction.editReply({ content: "Stopped." });
+        return;
+      }
       logError(error);
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply({
@@ -111,6 +120,8 @@ const text2img: BotCommand = {
           flags: MessageFlags.Ephemeral,
         });
       }
+    } finally {
+      await stop.finish();
     }
   },
 };
