@@ -16,6 +16,20 @@ error_marker="<!-- ai-review-error -->"
 bot_login="github-actions[bot]"
 inline_marker="<!-- ai-review-inline -->"
 inline_note=""
+inline_count=0
+summary_url=""
+findings_state="none"
+heading_awk='
+  function plain(s) { s = tolower(s); gsub(/[*_#]/, "", s); sub(/^[ \t]+/, "", s); return s }
+  function heading(s, name,    p, after) {
+    p = plain(s)
+    if (substr(p, 1, length(name)) != name) return 0
+    after = substr(p, length(name) + 1, 1)
+    if (after ~ /[a-z]/) return 0
+    if (s ~ /^[ \t]*(#|\*\*|__)/) return 1
+    return p ~ ("^" name "[ \t]*:?[ \t]*$")
+  }
+'
 boundary="untrusted-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 content_filter='(.choices[0].message.content // "") | if type == "array" then map(.text // "") | join("") else tostring end'
 truncation_note=""
@@ -34,9 +48,9 @@ upsert_comment() {
   comment_id=$(find_comments "$marker" | tail -n 1)
   jq -n --rawfile body "$body_file" '{body: $body}' > "$work/comment.json"
   if [[ -n "$comment_id" ]]; then
-    gh api --method PATCH "repos/$REPO/issues/comments/$comment_id" --input "$work/comment.json" > /dev/null
+    gh api --method PATCH "repos/$REPO/issues/comments/$comment_id" --input "$work/comment.json" --jq '.html_url // empty' > "$work/comment-url.txt"
   else
-    gh api --method POST "repos/$REPO/issues/$PR_NUMBER/comments" --input "$work/comment.json" > /dev/null
+    gh api --method POST "repos/$REPO/issues/$PR_NUMBER/comments" --input "$work/comment.json" --jq '.html_url // empty' > "$work/comment-url.txt"
   fi
 }
 
@@ -82,39 +96,106 @@ fail() {
   exit 1
 }
 
-extract_inline_comments() {
-  : > "$work/inline.json"
-  awk -v block="$work/inline.json" '
-    /^[[:space:]]*```[[:space:]]*inline-comments[[:space:]]*$/ { grab = 1; next }
-    grab && /^[[:space:]]*```[[:space:]]*$/ { grab = 0; next }
+extract_findings() {
+  : > "$work/findings-raw.txt"
+  awk -v block="$work/findings-raw.txt" '
+    /^[ \t]*```[ \t]*(findings|inline-comments)[ \t]*$/ { grab = 1; next }
+    grab && /^[ \t]*```[ \t]*$/ { grab = 0; next }
     grab { print > block; next }
     { print }
-  ' "$work/review.md" | jq -Rrs 'sub("\\s+$"; "")' > "$work/review-clean.md"
-  mv "$work/review-clean.md" "$work/review.md"
+  ' "$work/model.md" > "$work/model-clean.md"
+  echo "[]" > "$work/findings.json"
   echo "[]" > "$work/inline-comments.json"
-  if [[ ! -s "$work/inline.json" ]]; then
-    return 0
-  fi
-  if ! jq -c --rawfile allowed "$work/lines.tsv" --arg model "$OPENROUTER_MODEL" --arg marker "$inline_marker" '
+  if [[ ! -s "$work/findings-raw.txt" ]]; then
+    findings_state="none"
+  elif jq -c '
+      if type != "array" then error("the findings block is not an array") else . end
+      | map(select(type == "object"))
+      | to_entries
+      | map(.key as $index | .value | {
+          index: $index,
+          severity: ((.severity // "note") | tostring | ascii_downcase | gsub("[^a-z]"; "") | if . == "" then "note" else . end),
+          title: ((.title // "Finding") | tostring | gsub("[\\r\\n]+"; " ") | .[0:200]),
+          body: ((.body // "") | tostring | .[0:4000]),
+          path: (if (.path | type) == "string" and .path != "" then .path else null end),
+          line: ((.line | if type == "string" then (tonumber? // null) else . end)
+            | if type == "number" and . == floor and . > 0 then . else null end)
+        })
+    ' "$work/findings-raw.txt" > "$work/findings-parsed.json" 2> /dev/null && [[ -s "$work/findings-parsed.json" ]]; then
+    mv "$work/findings-parsed.json" "$work/findings.json"
+    findings_state="valid"
+    awk "$heading_awk"'
+      heading($0, "findings") { skipping = 1; next }
+      skipping && heading($0, "notes") { skipping = 0 }
+      !skipping { print }
+    ' "$work/model-clean.md" > "$work/model-stripped.md"
+    mv "$work/model-stripped.md" "$work/model-clean.md"
+    jq -c --rawfile allowed "$work/lines.tsv" --arg model "$OPENROUTER_MODEL" --arg marker "$inline_marker" '
       ($allowed | split("\n") | map(select(length > 0)) | INDEX(.)) as $ok
-      | (if type == "array" then . else [] end)
-      | map(select(type == "object" and (.path | type) == "string"))
-      | map(.line |= (if type == "string" then (tonumber? // null) else . end))
-      | map(select((.line | type) == "number" and .line == (.line | floor)))
-      | map(select($ok[.path + "\t" + (.line | tostring)] != null))
+      | map(select(.path != null and .line != null and $ok[.path + "\t" + (.line | tostring)] != null))
       | .[0:25]
       | map({
           path,
           line,
           side: "RIGHT",
-          body: ($marker + "\n**" + ((.severity // "note") | tostring) + "** · " + ((.title // "Finding") | tostring)
-            + "\n\n" + ((.body // "") | tostring | .[0:4000]) + "\n\n<sub>AI review by `" + $model + "`</sub>")
+          body: ($marker + "\n<!-- ai-review-finding:" + (.index | tostring) + " -->\n**" + .severity + "** · " + .title
+            + "\n\n" + .body + "\n\n<sub>AI review by `" + $model + "`</sub>")
         })
-    ' "$work/inline.json" > "$work/inline-candidates.json" 2> /dev/null || [[ ! -s "$work/inline-candidates.json" ]]; then
-    echo "::warning::The inline comments block from the model is not valid JSON, so only the review comment is posted."
-    return 0
+    ' "$work/findings.json" > "$work/inline-comments.json"
+  else
+    findings_state="invalid"
+    echo "::warning::The findings block from the model is not valid JSON, so it is shown as returned."
   fi
-  mv "$work/inline-candidates.json" "$work/inline-comments.json"
+  jq -Rrs 'sub("^\\s+"; "") | sub("\\s+$"; "")' "$work/model-clean.md" > "$work/model.md"
+}
+
+compose_review() {
+  local urls=$1
+  if [[ "$findings_state" == "valid" ]]; then
+    jq -r --slurpfile urls "$urls" '
+      ($urls[0] // {}) as $u
+      | if length == 0 then "**Findings**: No significant issues found."
+        else "**Findings**\n\n" + (to_entries | map(
+          .key as $n | .value as $f | ($f.index | tostring) as $i
+          | "\($n + 1). " as $marker
+          | (if $f.path == null then "" elif $f.line == null then $f.path else "\($f.path):\($f.line)" end) as $location
+          | (if $location == "" then "" else "`" + ($location | gsub("`"; "")) + "`" end) as $code
+          | ($u | has($i)) as $inlined
+          | (if $inlined and $code != "" and $u[$i] != "" then "[\($code)](\($u[$i]))" else $code end) as $where
+          | $marker + "**\($f.severity)**" + (if $where == "" then "" else " · \($where)" end) + " · \($f.title)"
+            + (if $inlined or $f.body == "" then ""
+              else "\n\n" + ($f.body | split("\n") | map(if . == "" then . else (" " * ($marker | length)) + . end) | join("\n"))
+              end)
+        ) | join("\n\n"))
+        end
+    ' "$work/findings.json" > "$work/findings.md"
+    awk -v section="$work/findings.md" "$heading_awk"'
+      !inserted && heading($0, "notes") {
+        if (last != "") print ""
+        while ((getline row < section) > 0) print row
+        print ""
+        inserted = 1
+      }
+      { print; last = $0 }
+      END {
+        if (!inserted) {
+          if (last != "") print ""
+          while ((getline row < section) > 0) print row
+        }
+      }
+    ' "$work/model.md" > "$work/review-body.md"
+  elif [[ "$findings_state" == "invalid" ]]; then
+    {
+      cat "$work/model.md"
+      printf '\n**Findings**: the model returned them in a format the bot could not read, so they are shown as returned.\n\n<details>\n<summary>Findings as returned</summary>\n\n````\n'
+      cat "$work/findings-raw.txt"
+      printf '````\n\n</details>\n'
+    } > "$work/review-body.md"
+  else
+    cp "$work/model.md" "$work/review-body.md"
+  fi
+  { cat "$work/review-body.md"; cat "$work/extra.md"; } \
+    | jq -Rrs 'sub("^\\s+"; "") | sub("\\s+$"; "") | .[0:60000]' > "$work/review.md"
 }
 
 list_old_inline_comments() {
@@ -144,18 +225,41 @@ retire_old_inline_comments() {
 }
 
 post_inline_review() {
-  local count
+  local count pointer="the AI review comment"
   count=$(jq 'length' "$work/inline-comments.json")
   if (( count == 0 )); then
     return 0
   fi
+  if [[ -n "$summary_url" ]]; then
+    pointer="[the AI review comment]($summary_url)"
+  fi
   jq -n \
     --arg sha "$head_sha" \
-    --arg body "$inline_marker"$'\n'"🤖 AI review left $count inline comment(s) on commit $head_sha. The full review is in the AI review comment." \
+    --arg body "$inline_marker"$'\n'"🤖 AI review left $count inline comment(s) on commit $head_sha. The summary is in $pointer." \
     --slurpfile comments "$work/inline-comments.json" \
     '{commit_id: $sha, event: "COMMENT", body: $body, comments: $comments[0]}' > "$work/review-request.json"
-  gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/reviews" --input "$work/review-request.json" > /dev/null || return 1
-  inline_note=" $count finding(s) are also posted as inline comments."
+  gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/reviews" --input "$work/review-request.json" > "$work/review-response.json" || return 1
+  inline_count=$count
+}
+
+link_inline_comments() {
+  local review_id review_url
+  review_id=$(jq -r '.id // empty' "$work/review-response.json" 2> /dev/null || true)
+  review_url=$(jq -r '.html_url // empty' "$work/review-response.json" 2> /dev/null || true)
+  echo "{}" > "$work/inline-posted.json"
+  if [[ -n "$review_id" ]] && gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/reviews/$review_id/comments" > "$work/inline-listed.json"; then
+    jq -s '
+      add // []
+      | map(select(.body | test("<!-- ai-review-finding:[0-9]+ -->"))
+        | {(.body | capture("<!-- ai-review-finding:(?<n>[0-9]+) -->").n): .html_url})
+      | add // {}
+    ' "$work/inline-listed.json" > "$work/inline-posted.json" || echo "{}" > "$work/inline-posted.json"
+  fi
+  jq --slurpfile posted "$work/inline-posted.json" --arg fallback "$review_url" '
+    map(.body | capture("<!-- ai-review-finding:(?<n>[0-9]+) -->").n)
+    | map({(.): ($posted[0][.] // $fallback)})
+    | add // {}
+  ' "$work/inline-comments.json" > "$work/inline-urls.json"
 }
 
 publish_inline_review() {
@@ -164,10 +268,16 @@ publish_inline_review() {
     return 0
   fi
   if ! post_inline_review; then
-    echo "::warning::Could not post the inline comments, so the earlier ones are kept and the findings are only in the review comment."
+    echo "::warning::Could not post the inline comments, so the earlier ones are kept and the findings stay in the review comment."
     return 0
   fi
-  if [[ -n "$inline_note" ]]; then
+  if (( inline_count > 0 )); then
+    if ! link_inline_comments; then
+      echo "::warning::Could not link the inline comments, so their findings stay in full in the review comment."
+      echo "{}" > "$work/inline-urls.json"
+    fi
+    inline_note=" $inline_count finding(s) are posted as inline comments, linked from the list above."
+    compose_review "$work/inline-urls.json"
     publish_review
   fi
   retire_old_inline_comments || echo "::warning::Could not remove or retire every inline comment of an earlier review."
@@ -191,6 +301,7 @@ publish_review() {
       "$model_kind" "$head_sha" "$inline_note" "$skipped_note"
   } > "$work/comment.md"
   upsert_comment "$review_marker" "$work/comment.md"
+  summary_url=$(cat "$work/comment-url.txt" 2> /dev/null || true)
   delete_comments "$error_marker" || echo "::warning::Could not remove an earlier failure comment."
 }
 
@@ -432,19 +543,22 @@ done
 jq -r "$content_filter"'
   | sub("^\\s*<think>[\\s\\S]*?</think>\\s*"; "")
   | sub("\\s+$"; "")
-  | .[0:60000]' "$work/response.json" > "$work/review.md"
-extract_inline_comments
-if [[ -z "$(tr -d '[:space:]' < "$work/review.md")" ]]; then
+  | .[0:60000]' "$work/response.json" > "$work/model.md"
+extract_findings
+if [[ "$findings_state" == "none" && -z "$(tr -d '[:space:]' < "$work/model.md")" ]]; then
   fail "The model \`$OPENROUTER_MODEL\` returned an empty review."
 fi
+: > "$work/extra.md"
 if [[ "$(jq -r '.choices[0].finish_reason // empty' "$work/response.json")" == "length" ]]; then
-  printf '\n_The model reached its output limit, so this review may be cut off._\n' >> "$work/review.md"
+  printf '\n_The model reached its output limit, so this review may be cut off._\n' >> "$work/extra.md"
 fi
 latest_sha=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.head.sha' || echo "$head_sha")
 if [[ "$latest_sha" != "$head_sha" ]]; then
-  printf "\n_New commits were pushed while this review ran, so it does not cover them. Comment \`/review\` again to review the latest commit._\n" >> "$work/review.md"
+  printf "\n_New commits were pushed while this review ran, so it does not cover them. Comment \`/review\` again to review the latest commit._\n" >> "$work/extra.md"
 fi
 
+echo "{}" > "$work/no-inline.json"
+compose_review "$work/no-inline.json"
 publish_review
 publish_inline_review
-echo "Review posted for $head_sha with $(jq 'length' "$work/inline-comments.json") inline comment candidate(s)."
+echo "Review posted for $head_sha with $(jq 'length' "$work/findings.json") finding(s), $inline_count of them inline."
