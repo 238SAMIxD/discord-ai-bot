@@ -62,6 +62,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
   timeoutMs = 0,
   waitTimeoutMs = 60_000,
   streamIdleTimeoutMs = 0,
+  signal?: AbortSignal,
 ): Promise<TResponse> {
   if (servers.length === 0) {
     throw new Error("No servers available");
@@ -75,6 +76,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
   let error: Error | null = null;
 
   while (true) {
+    signal?.throwIfAborted();
     let busy = false;
 
     for (const server of servers) {
@@ -98,6 +100,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
           data,
           responseType,
           timeout: timeoutMs,
+          signal,
         });
         if (responseType === "stream") {
           const stream = holdServerUntilClosed(
@@ -110,6 +113,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
         }
         return result.data as TResponse;
       } catch (err) {
+        signal?.throwIfAborted();
         error = err as Error;
         failed.add(server);
         logError(error);
@@ -134,11 +138,12 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
       LogLevel.Debug,
       "All servers are busy, waiting for an available server.",
     );
+    const waitSignals = signal ? [signal] : [];
+    if (waitTimeoutMs > 0) {
+      waitSignals.push(AbortSignal.timeout(timerDelay(timeLeft)));
+    }
     await once(serverEmitter, "available", {
-      signal:
-        waitTimeoutMs > 0
-          ? AbortSignal.timeout(timerDelay(timeLeft))
-          : undefined,
+      signal: AbortSignal.any(waitSignals),
     }).catch(() => undefined);
   }
 }

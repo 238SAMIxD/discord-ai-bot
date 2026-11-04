@@ -20,6 +20,7 @@ export async function makeRequest<TResponse, TRequest = object>(
   data: TRequest,
   responseType:
     "arraybuffer" | "blob" | "document" | "json" | "text" | "stream" = "json",
+  signal?: AbortSignal,
 ): Promise<TResponse> {
   return makeBaseRequest<TResponse, TRequest>(
     getConfig().servers,
@@ -30,12 +31,16 @@ export async function makeRequest<TResponse, TRequest = object>(
     getConfig().requestTimeout,
     getConfig().serverWaitTimeout,
     getConfig().streamIdleTimeout,
+    signal,
   );
 }
 
 const modelSystemMessages = new Map<string, string | null>();
 
-async function getModelSystemMessage(model: string): Promise<string | null> {
+async function getModelSystemMessage(
+  model: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
   const cached = modelSystemMessages.get(model);
   if (cached !== undefined) return cached;
 
@@ -43,19 +48,24 @@ async function getModelSystemMessage(model: string): Promise<string | null> {
     "/api/show",
     "post",
     { name: model },
+    "json",
+    signal,
   );
   const system = info?.system ?? null;
   modelSystemMessages.set(model, system);
   return system;
 }
 
-export async function buildSystemMessage(model: string): Promise<string> {
+export async function buildSystemMessage(
+  model: string,
+  signal?: AbortSignal,
+): Promise<string> {
   const config = getConfig();
   const systemMessages: string[] = [];
 
   if (config.useModelSystemMessage) {
     try {
-      const modelSystemMessage = await getModelSystemMessage(model);
+      const modelSystemMessage = await getModelSystemMessage(model, signal);
       if (modelSystemMessage) systemMessages.push(modelSystemMessage);
     } catch (e) {
       log.log(

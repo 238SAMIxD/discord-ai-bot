@@ -1,3 +1,4 @@
+import { finished } from "node:stream/promises";
 import { ChatInputCommandInteraction, Message } from "discord.js";
 import { logError } from "./logger.js";
 import { splitText } from "./helpers.js";
@@ -6,13 +7,13 @@ import { splitText } from "./helpers.js";
  * Handles an Ollama streaming response, throttling Discord message edits
  * and updating the chat history.
  */
-export function handleStreamResponse<
+export async function handleStreamResponse<
   T extends { message?: { content?: string }; response?: string },
 >(
   interaction: ChatInputCommandInteraction,
   responseStream: NodeJS.ReadableStream,
   onComplete: (fullText: string) => void | Promise<void>,
-) {
+): Promise<void> {
   const streamState = {
     fullResponse: "",
     buffer: "",
@@ -22,8 +23,10 @@ export function handleStreamResponse<
 
   let isEditing = false;
   let pendingEdit = false;
+  let failed = false;
 
   const updateMessage = async (force = false) => {
+    if (failed) return;
     if (isEditing) {
       pendingEdit = true;
       return;
@@ -70,40 +73,39 @@ export function handleStreamResponse<
     void updateMessage();
   });
 
-  responseStream.on("end", async () => {
-    if (streamState.buffer.trim().length > 0) {
-      try {
-        const parsedData = JSON.parse(streamState.buffer.trim()) as T;
-        const text = parsedData.message?.content || parsedData.response || "";
-        streamState.fullResponse += text;
-      } catch {
-        // Ignore
-      }
+  try {
+    await finished(responseStream);
+  } catch (error) {
+    failed = true;
+    await streamState.editPromise.catch(() => undefined);
+    throw error;
+  }
+
+  if (streamState.buffer.trim().length > 0) {
+    try {
+      const parsedData = JSON.parse(streamState.buffer.trim()) as T;
+      const text = parsedData.message?.content || parsedData.response || "";
+      streamState.fullResponse += text;
+    } catch {
+      // Ignore
     }
+  }
 
-    const cleanText = streamState.fullResponse.trim() || "(No response)";
-    await onComplete(cleanText);
-    await updateMessage(true);
+  const cleanText = streamState.fullResponse.trim() || "(No response)";
+  await onComplete(cleanText);
+  await updateMessage(true);
 
-    const segments = splitText(cleanText, 2000);
-    if (segments.length > 1) {
-      try {
-        for (let i = 1; i < segments.length; i++) {
-          await interaction.followUp({
-            content: segments[i],
-            fetchReply: true,
-          });
-        }
-      } catch (err) {
-        logError(err);
+  const segments = splitText(cleanText, 2000);
+  if (segments.length > 1) {
+    try {
+      for (let i = 1; i < segments.length; i++) {
+        await interaction.followUp({
+          content: segments[i],
+          fetchReply: true,
+        });
       }
+    } catch (err) {
+      logError(err);
     }
-  });
-
-  responseStream.on("error", (err: Error) => {
-    logError(err);
-    void interaction
-      .editReply({ content: "Error occurred while streaming response." })
-      .catch(logError);
-  });
+  }
 }
