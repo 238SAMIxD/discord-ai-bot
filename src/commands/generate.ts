@@ -237,7 +237,10 @@ const generate: BotCommand = {
         await interaction.editReply({ content: "Stopped." });
       } else {
         logError(error);
-        await interaction.editReply({ content: "Failed to run generate." });
+        await interaction.editReply({
+          content: "Failed to run generate.",
+          components: [],
+        });
       }
     } finally {
       await stop.finish(stoppedPartway);

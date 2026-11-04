@@ -503,7 +503,7 @@ test(
 );
 
 test(
-  "a click after /chat has its answer doesn't turn a failed reply into Stopped.",
+  "a failed /chat reply after its answer arrived isn't Stopped and has no Stop button",
   options,
   async (t) => {
     const server = await startFakeServer(t);
@@ -529,7 +529,10 @@ test(
         flags: MessageFlags.Ephemeral,
       },
     ]);
-    assert.equal(lastContent(interaction), "Failed to run chat.");
+    assert.deepEqual(edits(interaction).at(-1), {
+      content: "Failed to run chat.",
+      components: [],
+    });
     assert.deepEqual(getUserHistory(interaction.channelId, OWNER), [
       { role: "user", content: `User ${OWNER}: Question` },
       { role: "assistant", content: "Answer" },

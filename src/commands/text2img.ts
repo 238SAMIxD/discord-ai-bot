@@ -113,6 +113,7 @@ const text2img: BotCommand = {
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply({
           content: "Error, please check the console",
+          components: [],
         });
       } else {
         await interaction.reply({

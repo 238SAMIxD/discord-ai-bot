@@ -160,7 +160,10 @@ const chat: BotCommand = {
         });
       } else {
         logError(error);
-        await interaction.editReply({ content: "Failed to run chat." });
+        await interaction.editReply({
+          content: "Failed to run chat.",
+          components: [],
+        });
       }
     } finally {
       removePendingChat(channelID, userID, pending);
