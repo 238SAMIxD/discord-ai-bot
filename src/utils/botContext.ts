@@ -21,36 +21,51 @@ export interface BotContextInput {
   now?: Date;
 }
 
-let profilePromise: Promise<BotProfile> | null = null;
+let descriptionPromise: Promise<string | null> | null = null;
+let bannerPromise: Promise<string | null> | null = null;
 
-async function fetchBotProfile(client: Client): Promise<BotProfile> {
-  const profile: BotProfile = { description: null, bannerURL: null };
-  let failed = false;
+async function fetchDescription(client: Client): Promise<string | null> {
+  if (!client.application) {
+    log.log(
+      LogLevel.Warn,
+      "Bot application is not available; the bot description is left out of the system prompt",
+    );
+    return null;
+  }
   try {
-    const application = await client.application?.fetch();
-    profile.description = application?.description?.trim() || null;
+    const application = await client.application.fetch();
+    return application.description?.trim() || null;
   } catch (e) {
-    failed = true;
+    descriptionPromise = null;
     log.log(LogLevel.Debug, "Could not fetch application description", e);
+    return null;
   }
-  try {
-    const user = await client.user?.fetch(true);
-    profile.bannerURL = user?.bannerURL() ?? null;
-  } catch (e) {
-    failed = true;
-    log.log(LogLevel.Debug, "Could not fetch bot banner", e);
-  }
-  if (failed) profilePromise = null;
-  return profile;
 }
 
-export function getBotProfile(client: Client): Promise<BotProfile> {
-  profilePromise ??= fetchBotProfile(client);
-  return profilePromise;
+async function fetchBanner(client: Client): Promise<string | null> {
+  try {
+    const user = await client.user?.fetch(true);
+    return user?.bannerURL() ?? null;
+  } catch (e) {
+    bannerPromise = null;
+    log.log(LogLevel.Debug, "Could not fetch bot banner", e);
+    return null;
+  }
+}
+
+export async function getBotProfile(client: Client): Promise<BotProfile> {
+  descriptionPromise ??= fetchDescription(client);
+  bannerPromise ??= fetchBanner(client);
+  const [description, bannerURL] = await Promise.all([
+    descriptionPromise,
+    bannerPromise,
+  ]);
+  return { description, bannerURL };
 }
 
 export function resetBotProfileCache(): void {
-  profilePromise = null;
+  descriptionPromise = null;
+  bannerPromise = null;
 }
 
 export function formatBotContext(input: BotContextInput): string {

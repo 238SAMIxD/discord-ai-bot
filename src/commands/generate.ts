@@ -10,6 +10,7 @@ import { handleStreamResponse } from "../utils/stream.js";
 import { statsComponents } from "../utils/stats.js";
 import { extractTextFromPDF } from "../utils/pdf.js";
 import { createStopButton } from "../utils/stopButton.js";
+import { buildBotContext } from "../utils/botContext.js";
 import { getConfig } from "../config.js";
 import {
   BotCommand,
@@ -190,7 +191,11 @@ const generate: BotCommand = {
         imagesBase64.push(...imageContents);
       }
 
-      const systemMessage = await buildSystemMessage(model, stop.signal);
+      const systemMessage = await buildSystemMessage(
+        model,
+        stop.signal,
+        await buildBotContext(interaction),
+      );
 
       const payload: OllamaGenerateRequest = {
         model,

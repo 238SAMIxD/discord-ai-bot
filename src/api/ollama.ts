@@ -59,6 +59,7 @@ async function getModelSystemMessage(
 export async function buildSystemMessage(
   model: string,
   signal?: AbortSignal,
+  botContext = "",
 ): Promise<string> {
   const config = getConfig();
   const systemMessages: string[] = [];
@@ -75,6 +76,7 @@ export async function buildSystemMessage(
       );
     }
   }
+  if (botContext) systemMessages.push(botContext);
   if (config.useCustomSystemMessage && config.customSystemMessage) {
     systemMessages.push(config.customSystemMessage);
   }
