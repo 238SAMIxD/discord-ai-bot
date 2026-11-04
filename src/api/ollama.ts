@@ -19,12 +19,7 @@ export async function makeRequest<TResponse, TRequest = object>(
   method: HttpMethod,
   data: TRequest,
   responseType:
-    | "arraybuffer"
-    | "blob"
-    | "document"
-    | "json"
-    | "text"
-    | "stream" = "json",
+    "arraybuffer" | "blob" | "document" | "json" | "text" | "stream" = "json",
 ): Promise<TResponse> {
   return makeBaseRequest<TResponse, TRequest>(
     getConfig().servers,

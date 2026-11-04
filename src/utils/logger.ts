@@ -94,9 +94,7 @@ function getInitialLoggerName(): string {
 
   try {
     const parsed = JSON.parse(shardEnv) as
-      | number
-      | string
-      | (number | string)[];
+      number | string | (number | string)[];
     if (Array.isArray(parsed) && parsed.length === 1) {
       return `Shard #${String(parsed[0])}`;
     }
