@@ -106,6 +106,11 @@ const generate: BotCommand = {
     }
     const stop = createStopButton(interaction);
     let stoppedPartway = false;
+    let slowmodeCancelled = false;
+    const releaseSlowmode = () => {
+      slowmodeCancelled = true;
+      cancelSlowmode(interaction.user.id);
+    };
     try {
       await interaction.deferReply();
       await stop.show();
@@ -135,7 +140,7 @@ const generate: BotCommand = {
           (await visionRejection(model, stop.signal));
         if (problem) {
           stop.complete();
-          cancelSlowmode(interaction.user.id);
+          releaseSlowmode();
           await interaction.editReply({ content: problem, components: [] });
           return;
         }
@@ -309,7 +314,7 @@ const generate: BotCommand = {
       if (stop.signal.aborted) {
         await interaction.editReply({ content: "Stopped." });
       } else if (error instanceof ServersBusyError) {
-        cancelSlowmode(interaction.user.id);
+        releaseSlowmode();
         await interaction.editReply({
           content: BUSY_MESSAGE,
           components: [],
@@ -322,7 +327,7 @@ const generate: BotCommand = {
         });
       }
     } finally {
-      finishSlowmode(interaction.user.id);
+      if (!slowmodeCancelled) finishSlowmode(interaction.user.id);
       await stop.finish(stoppedPartway);
     }
   },

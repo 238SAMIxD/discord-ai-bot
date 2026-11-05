@@ -32,12 +32,16 @@ export function getCommandData(features: CommandFeatures) {
   return getCommands().map((c) => c.buildData?.(features) ?? c.data);
 }
 
-export async function resolveImageInput(): Promise<boolean> {
+const IMAGE_PROBE_TIMEOUT_MS = 15_000;
+
+export async function resolveImageInput(
+  timeoutMs = IMAGE_PROBE_TIMEOUT_MS,
+): Promise<boolean> {
   const mode = getConfig().imageInput;
   if (mode !== "auto") return mode;
 
   try {
-    const visionModels = await getVisionModels();
+    const visionModels = await getVisionModels(AbortSignal.timeout(timeoutMs));
     if (visionModels.length === 0) {
       log.log(
         LogLevel.Info,
@@ -53,7 +57,7 @@ export async function resolveImageInput(): Promise<boolean> {
   } catch (error) {
     log.log(
       LogLevel.Warn,
-      "IMAGE_INPUT=auto: could not reach the Ollama servers, so /chat is registered without the image option.",
+      "IMAGE_INPUT=auto: could not check the Ollama servers for vision models, so /chat is registered without the image option.",
       error,
     );
     return false;

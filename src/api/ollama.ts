@@ -52,7 +52,14 @@ export async function makeRequest<TResponse, TRequest = object>(
   );
 }
 
-const modelInfo = new Map<string, OllamaShowResponse>();
+interface CachedModelInfo {
+  info: OllamaShowResponse;
+  fetchedAt: number;
+}
+
+const modelInfo = new Map<string, CachedModelInfo>();
+
+const NO_VISION_RECHECK_MS = 5 * 60_000;
 
 export function clearModelInfoCache(): void {
   modelInfo.clear();
@@ -62,9 +69,11 @@ async function getModelInfo(
   model: string,
   signal?: AbortSignal,
   onQueue?: QueueListener,
+  maxAgeMs = Infinity,
 ): Promise<OllamaShowResponse> {
+  signal?.throwIfAborted();
   const cached = modelInfo.get(model);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.fetchedAt < maxAgeMs) return cached.info;
 
   const info = await makeRequest<OllamaShowResponse, OllamaShowRequest>(
     "/api/show",
@@ -75,7 +84,7 @@ async function getModelInfo(
     onQueue,
   );
   const result = info ?? {};
-  modelInfo.set(model, result);
+  modelInfo.set(model, { info: result, fetchedAt: Date.now() });
   return result;
 }
 
@@ -106,7 +115,14 @@ export async function supportsVision(
   signal?: AbortSignal,
 ): Promise<boolean> {
   try {
-    return hasVision(await getModelInfo(model, signal));
+    const cached = modelInfo.get(model);
+    if (cached && hasVision(cached.info)) {
+      signal?.throwIfAborted();
+      return true;
+    }
+    return hasVision(
+      await getModelInfo(model, signal, undefined, NO_VISION_RECHECK_MS),
+    );
   } catch (e) {
     signal?.throwIfAborted();
     log.log(
@@ -156,7 +172,7 @@ interface ModelsLookup {
   reachable: boolean;
 }
 
-async function lookUpModels(): Promise<ModelsLookup> {
+async function lookUpModels(signal?: AbortSignal): Promise<ModelsLookup> {
   const allModels: OllamaModelInfo[] = [];
   const seenModels = new Set<string>();
   let reachable = false;
@@ -166,7 +182,7 @@ async function lookUpModels(): Promise<ModelsLookup> {
       try {
         const response = await axios.get<OllamaTagsResponse>(
           serverUrl(server, "api/tags"),
-          { timeout: 5000 },
+          { timeout: 5000, signal },
         );
         return response.data;
       } catch {
@@ -205,11 +221,14 @@ export class OllamaUnreachableError extends Error {
   }
 }
 
-export async function getVisionModels(): Promise<OllamaModelInfo[]> {
-  const { models, reachable } = await lookUpModels();
+export async function getVisionModels(
+  signal?: AbortSignal,
+): Promise<OllamaModelInfo[]> {
+  const { models, reachable } = await lookUpModels(signal);
+  signal?.throwIfAborted();
   if (!reachable) throw new OllamaUnreachableError();
   const vision = await Promise.all(
-    models.map((model) => supportsVision(model.model)),
+    models.map((model) => supportsVision(model.model, signal)),
   );
   return models.filter((_, i) => vision[i]);
 }

@@ -1,5 +1,9 @@
 import { getConfig } from "../config.js";
-import { getVisionModels, supportsVision } from "../api/ollama.js";
+import {
+  getVisionModels,
+  OllamaUnreachableError,
+  supportsVision,
+} from "../api/ollama.js";
 import { downloadAttachment } from "./helpers.js";
 import { log, LogLevel } from "./logger.js";
 
@@ -11,9 +15,14 @@ export type ImageAttachment = Pick<
 >;
 
 const MAX_LISTED_MODELS = 10;
+const MAX_NAME_LENGTH = 100;
 
 function code(text: string): string {
-  return `\`${text.replace(/`/g, "'")}\``;
+  const short =
+    text.length > MAX_NAME_LENGTH
+      ? `${text.slice(0, MAX_NAME_LENGTH - 1)}…`
+      : text;
+  return `\`${short.replace(/`/g, "'")}\``;
 }
 
 export function isImageAttachment(
@@ -41,13 +50,17 @@ export async function visionRejection(
 ): Promise<string | null> {
   if (await supportsVision(model, signal)) return null;
 
-  let names: string[] = [];
+  let names: string[];
   try {
-    names = (await getVisionModels()).map((m) => code(m.model));
+    names = (await getVisionModels(signal)).map((m) => code(m.model));
   } catch (e) {
+    signal?.throwIfAborted();
     log.log(LogLevel.Debug, "Could not list the vision models", e);
+    if (e instanceof OllamaUnreachableError) {
+      return `${code(model)} can't read images, and the Ollama server could not be reached to look for a model that can. Try again in a moment.`;
+    }
+    names = [];
   }
-  signal?.throwIfAborted();
 
   if (names.length === 0) {
     return `${code(model)} can't read images, and no vision model is installed on the Ollama server.`;

@@ -128,6 +128,24 @@ test("supportsVision is false when Ollama cannot tell", async (t) => {
 test("supportsVision rethrows when it is stopped", async (t) => {
   await startFakeOllama(t);
   await assert.rejects(supportsVision("llava:latest", AbortSignal.abort()));
+  assert.equal(await supportsVision("llava:latest"), true);
+  await assert.rejects(supportsVision("llava:latest", AbortSignal.abort()));
+});
+
+test("supportsVision checks a model without vision again after a while", async (t) => {
+  const ollama = await startFakeOllama(t);
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  SHOWN["changing"] = { capabilities: ["completion"] };
+  t.after(() => delete SHOWN["changing"]);
+
+  assert.equal(await supportsVision("changing"), false);
+  SHOWN["changing"] = { capabilities: ["completion", "vision"] };
+  assert.equal(await supportsVision("changing"), false);
+  t.mock.timers.tick(5 * 60_000);
+  assert.equal(await supportsVision("changing"), true);
+  t.mock.timers.tick(60 * 60_000);
+  assert.equal(await supportsVision("changing"), true);
+  assert.deepEqual(ollama.shows, ["changing", "changing"]);
 });
 
 test("supportsVision shares one /api/show request with the model system message", async (t) => {

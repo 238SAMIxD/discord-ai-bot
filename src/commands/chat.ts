@@ -44,6 +44,7 @@ import {
 } from "../state/slowmode.js";
 import {
   downloadImage,
+  ignoredImagesMessage,
   imageAttachmentError,
   imageMarker,
   visionRejection,
@@ -139,16 +140,25 @@ const chat: BotCommand = {
     const stop = createStopButton(interaction);
     const signal = AbortSignal.any([pending.signal, stop.signal]);
     let stoppedPartway = false;
+    let slowmodeCancelled = false;
+    const releaseSlowmode = () => {
+      slowmodeCancelled = true;
+      cancelSlowmode(userID);
+    };
     try {
       await interaction.deferReply();
       await stop.show();
       const prompt = interaction.options.getString("prompt", true);
       const model = interaction.options.getString("model") ?? getConfig().model;
       const stream = interaction.options.getBoolean("stream") ?? false;
-      const image =
-        getConfig().imageInput === false
-          ? null
-          : interaction.options.getAttachment("image");
+      let image = interaction.options.getAttachment("image");
+      if (image && getConfig().imageInput === false) {
+        await interaction.followUp({
+          content: ignoredImagesMessage([image]),
+          flags: MessageFlags.Ephemeral,
+        });
+        image = null;
+      }
 
       if (image) {
         const problem =
@@ -156,7 +166,7 @@ const chat: BotCommand = {
         if (problem) {
           removePendingChat(channelID, userID, pending);
           stop.complete();
-          cancelSlowmode(userID);
+          releaseSlowmode();
           await interaction.editReply({ content: problem, components: [] });
           return;
         }
@@ -260,7 +270,7 @@ const chat: BotCommand = {
           content: "Cancelled because your conversation history was cleared.",
         });
       } else if (error instanceof ServersBusyError) {
-        cancelSlowmode(userID);
+        releaseSlowmode();
         await interaction.editReply({
           content: BUSY_MESSAGE,
           components: [],
@@ -274,7 +284,7 @@ const chat: BotCommand = {
       }
     } finally {
       removePendingChat(channelID, userID, pending);
-      finishSlowmode(userID);
+      if (!slowmodeCancelled) finishSlowmode(userID);
       await stop.finish(stoppedPartway);
     }
   },

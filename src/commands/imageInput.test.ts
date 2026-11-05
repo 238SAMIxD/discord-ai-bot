@@ -21,6 +21,7 @@ import {
   openChatHistory,
 } from "../state/conversations.js";
 import { cancelPendingChats } from "../state/pendingChats.js";
+import { resetSlowmode, tryStartSlowmode } from "../state/slowmode.js";
 import { Logger, setLogger } from "../utils/logger.js";
 
 import type { AddressInfo } from "node:net";
@@ -59,11 +60,17 @@ before(() => openChatHistory(":memory:"));
 after(() => closeChatHistory());
 beforeEach(() => {
   process.env.IMAGE_INPUT = "auto";
+  process.env.SLOWMODE_DELAY = "0";
+  resetSlowmode();
   clearModelInfoCache();
   clearConfigCache();
 });
 
-async function startFakeOllama(t: TestContext, visionModels: string[]) {
+async function startFakeOllama(
+  t: TestContext,
+  visionModels: string[],
+  hangShow = false,
+) {
   const installed = ["orca:latest", ...visionModels];
   const requests: string[] = [];
   const chats: OllamaChatRequest[] = [];
@@ -80,6 +87,7 @@ async function startFakeOllama(t: TestContext, visionModels: string[]) {
         json({ models: installed.map((name) => ({ name, model: name })) });
         return;
       case "/api/show": {
+        if (hangShow) return;
         const { name } = JSON.parse(await text(req)) as { name: string };
         json({
           capabilities: visionModels.includes(name)
@@ -335,5 +343,114 @@ test(
         "Image input is turned off on this bot, so `cat.png` was ignored.",
       flags: MessageFlags.Ephemeral,
     });
+  },
+);
+
+test("auto gives up on a startup probe that hangs", options, async (t) => {
+  await startFakeOllama(t, ["llava:latest"], true);
+  assert.equal(await resolveImageInput(100), false);
+});
+
+test(
+  "chat says when Ollama could not be reached to look for vision models",
+  options,
+  async () => {
+    process.env.OLLAMA = "http://127.0.0.1:1";
+    clearConfigCache();
+    const interaction = fakeInteraction(
+      "26",
+      "What is this?",
+      "x".repeat(3000),
+      {
+        image: {
+          name: "cat.png",
+          size: PIXEL.length,
+          contentType: "image/png",
+          url: "http://127.0.0.1:1/cat.png",
+        },
+      },
+    );
+    await run(chat, interaction);
+
+    const reply = lastReply(interaction) as { content: string };
+    assert.match(
+      reply.content,
+      /^`x{99}…` can't read images, and the Ollama server could not be reached/,
+    );
+    assert.ok(reply.content.length < 2000);
+  },
+);
+
+test(
+  "chat ignores the image and says so when image input is off",
+  options,
+  async (t) => {
+    process.env.IMAGE_INPUT = "false";
+    const ollama = await startFakeOllama(t, ["llava:latest"]);
+    const interaction = fakeInteraction("27", "What is this?", "llava:latest", {
+      image: ollama.image(),
+    });
+    await run(chat, interaction);
+
+    assert.deepEqual(interaction.followUp.mock.calls[0]?.arguments[0], {
+      content:
+        "Image input is turned off on this bot, so `cat.png` was ignored.",
+      flags: MessageFlags.Ephemeral,
+    });
+    assert.deepEqual(ollama.chats[0]?.messages, [
+      { role: "user", content: "User 1: What is this?" },
+    ]);
+    assert.ok(!ollama.requests.includes("/cat.png"));
+  },
+);
+
+test("generate sends the images to a vision model", options, async (t) => {
+  const ollama = await startFakeOllama(t, ["llava:latest"]);
+  const interaction = fakeInteraction("28", "Describe", "llava:latest", {
+    attachment1: ollama.image(),
+    attachment2: ollama.image({ name: "dog.png" }),
+  });
+  await run(generate, interaction);
+
+  assert.deepEqual(ollama.generations[0]?.images, [
+    PIXEL.toString("base64"),
+    PIXEL.toString("base64"),
+  ]);
+  assert.deepEqual(lastReply(interaction), {
+    content: "A cat.",
+    components: [],
+  });
+});
+
+test(
+  "a turned down image leaves a newer request's slow mode alone",
+  options,
+  async (t) => {
+    process.env.SLOWMODE_DELAY = "60000";
+    const ollama = await startFakeOllama(t, ["llava:latest"]);
+    for (const command of [chat, generate]) {
+      resetSlowmode();
+      const interaction = fakeInteraction(
+        "29",
+        "What is this?",
+        "orca:latest",
+        {
+          image: ollama.image(),
+          attachment1: ollama.image(),
+        },
+      );
+      let newer = -1;
+      interaction.editReply.mock.mockImplementation(async (reply: unknown) => {
+        const content = (reply as { content?: string }).content ?? "";
+        if (content.includes("can't read images")) {
+          newer = tryStartSlowmode(USER);
+        }
+        return {};
+      });
+      await run(command, interaction);
+
+      assert.equal(newer, 0);
+      assert.equal(tryStartSlowmode(USER), Infinity);
+    }
   },
 );
