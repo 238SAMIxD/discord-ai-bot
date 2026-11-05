@@ -37,7 +37,7 @@
    - `/chat` has an optional `image` option, and `/generate` reads images among its attachments, so a vision model can look at them. Pull one first, e.g `ollama pull llava` or `ollama pull qwen2.5vl`, and pick it with the `model` option. Images are only sent when the chosen model can read them: otherwise the bot turns the request down and lists the vision models it found. The image is sent with that one message only, and the `/chat` history just notes `[image: file.png]`
    - `IMAGE_INPUT` controls the image option: `auto` (the default) asks the Ollama servers at startup and only adds the option to `/chat` when at least one vision model is installed, `true` always adds it, and `false` removes it and makes `/generate` ignore image attachments. Restart the bot after pulling your first vision model so `auto` picks it up. `MAX_IMAGE_SIZE_MB` (default 10) is the largest image accepted
 8. Install the required dependencies with `pnpm i`
-9. Start the bot with `pnpm start`
+9. Build the bot with `pnpm build`, then start it with `pnpm start`
 10. You can interact with the bot with its slash commands: `/chat`, `/generate`, `/text2img`, `/models` and `/clearhistory`
 11. Install <a href="https://github.com/AUTOMATIC1111/stable-diffusion-webui">Stable Diffusion</a>
 12. Run the script `./webui.sh --api --listen`
@@ -71,6 +71,14 @@ Run the same checks locally before opening a pull request:
 ```bash
 pnpm install --frozen-lockfile
 pnpm test:prettier && pnpm test:lint && pnpm test:tsc && pnpm test && pnpm build
+```
+
+The landing page lives in `site/`, a separate pnpm project with its own lockfile, so it isn't installed with the bot. Pull requests and pushes to `main` that change `site/` also run the `site` check, which formats, lints, type-checks and builds it. To run the same checks locally:
+
+```bash
+cd site
+pnpm install --frozen-lockfile
+pnpm test:prettier && pnpm test:lint && pnpm test:tsc && pnpm build
 ```
 
 The repository admin can comment `/review` on a pull request to get an AI code review from an [OpenRouter](https://openrouter.ai) model. It uses the free `nvidia/nemotron-3-ultra-550b-a55b:free` model unless the `OPENROUTER_MODEL` repository variable names another one, and requests to paid models are billed to the OpenRouter account that owns the `OPENROUTER_API_KEY` secret. Any text after the command is passed to the reviewer as extra instructions, for example `/review focus on attachment handling`. The review is posted as one comment, which later runs update in place. Findings that point at a line shown in the diff are posted as inline comments on that line, and the review comment lists them by title with a link, while the other findings are explained in the review comment itself. A later run replaces the inline comments unless someone has replied.
