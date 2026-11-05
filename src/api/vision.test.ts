@@ -10,6 +10,7 @@ import {
   OllamaUnreachableError,
   supportsVision,
 } from "./ollama.js";
+import { ServersBusyError } from "./base.js";
 import { clearConfigCache } from "../config.js";
 import { Logger, setLogger } from "../utils/logger.js";
 
@@ -86,6 +87,7 @@ async function startFakeOllama(t: TestContext) {
     }
     const { name } = JSON.parse(await text(req)) as { name: string };
     shows.push(name);
+    if (name === "hang") return;
     const info = SHOWN[name];
     res.writeHead(info ? 200 : 404, { "Content-Type": "application/json" });
     res.end(JSON.stringify(info ?? { error: `model '${name}' not found` }));
@@ -148,6 +150,22 @@ test("supportsVision checks a model again after a while", async (t) => {
   t.mock.timers.tick(5 * 60_000);
   assert.equal(await supportsVision("changing"), false);
   assert.deepEqual(ollama.shows, ["changing", "changing", "changing"]);
+});
+
+test("supportsVision passes on that every server is busy", async (t) => {
+  process.env.SERVER_WAIT_TIMEOUT = "50";
+  t.after(() => {
+    delete process.env.SERVER_WAIT_TIMEOUT;
+    clearConfigCache();
+  });
+  await startFakeOllama(t);
+  const holder = new AbortController();
+  const holding = supportsVision("hang", holder.signal).catch(() => false);
+
+  await assert.rejects(supportsVision("llava:latest"), ServersBusyError);
+  await assert.rejects(getVisionModels(), ServersBusyError);
+  holder.abort();
+  await holding;
 });
 
 test("supportsVision shares one /api/show request with the model system message", async (t) => {

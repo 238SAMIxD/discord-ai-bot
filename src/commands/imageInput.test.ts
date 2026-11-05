@@ -13,7 +13,8 @@ import { MessageFlags } from "discord.js";
 import chat from "./chat.js";
 import generate from "./generate.js";
 import { getCommandData, resolveImageInput } from "./commands.js";
-import { clearModelInfoCache } from "../api/ollama.js";
+import { clearModelInfoCache, supportsVision } from "../api/ollama.js";
+import { BUSY_MESSAGE } from "../utils/helpers.js";
 import { clearConfigCache } from "../config.js";
 import {
   closeChatHistory,
@@ -452,5 +453,37 @@ test(
       assert.equal(newer, 0);
       assert.equal(tryStartSlowmode(USER), Infinity);
     }
+  },
+);
+
+test(
+  "chat says the bot is busy when the vision check waits too long",
+  options,
+  async (t) => {
+    process.env.SERVER_WAIT_TIMEOUT = "50";
+    t.after(() => {
+      delete process.env.SERVER_WAIT_TIMEOUT;
+      clearConfigCache();
+    });
+    const ollama = await startFakeOllama(t, ["llava:latest"], true);
+    const holder = new AbortController();
+    const holding = supportsVision("orca:latest", holder.signal).catch(
+      () => false,
+    );
+
+    const interaction = fakeInteraction("30", "What is this?", "llava:latest", {
+      image: ollama.image(),
+    });
+    await run(chat, interaction);
+    holder.abort();
+    await holding;
+
+    assert.ok(
+      interaction.editReply.mock.calls.some(
+        (call) =>
+          (call.arguments[0] as { content?: string }).content === BUSY_MESSAGE,
+      ),
+    );
+    assert.deepEqual(ollama.chats, []);
   },
 );

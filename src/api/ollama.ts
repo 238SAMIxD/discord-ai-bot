@@ -2,6 +2,7 @@ import axios from "axios";
 import { getConfig } from "../config.js";
 import {
   makeBaseRequest,
+  ServersBusyError,
   type HttpMethod,
   type QueueListener,
 } from "./base.js";
@@ -120,6 +121,7 @@ export async function supportsVision(
     );
   } catch (e) {
     signal?.throwIfAborted();
+    if (e instanceof ServersBusyError) throw e;
     log.log(
       LogLevel.Debug,
       `Could not tell whether ${model} supports vision`,

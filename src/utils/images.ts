@@ -4,6 +4,7 @@ import {
   OllamaUnreachableError,
   supportsVision,
 } from "../api/ollama.js";
+import { ServersBusyError } from "../api/base.js";
 import { downloadAttachment } from "./helpers.js";
 import { log, LogLevel } from "./logger.js";
 
@@ -55,6 +56,7 @@ export async function visionRejection(
     names = (await getVisionModels(signal)).map((m) => code(m.model));
   } catch (e) {
     signal?.throwIfAborted();
+    if (e instanceof ServersBusyError) throw e;
     log.log(LogLevel.Debug, "Could not list the vision models", e);
     if (e instanceof OllamaUnreachableError) {
       return `${code(model)} can't read images, and the Ollama server could not be reached to look for a model that can. Try again in a moment.`;
