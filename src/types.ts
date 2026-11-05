@@ -35,6 +35,7 @@ export interface OllamaShowResponse {
   template?: string;
   modelfile?: string;
   parameters?: string;
+  capabilities?: string[];
   details?: {
     format: string;
     family: string;
@@ -93,12 +94,18 @@ export interface OllamaGenerateResponse extends OllamaStats {
   context?: number[];
 }
 
+export interface OllamaChatMessage {
+  role: string;
+  content: string;
+  images?: string[];
+}
+
 /**
  * Request payload for the Ollama `/api/chat` endpoint.
  */
 export interface OllamaChatRequest {
   model: string;
-  messages: { role: string; content: string }[];
+  messages: OllamaChatMessage[];
   stream?: boolean;
 }
 
@@ -156,6 +163,10 @@ export interface ShardMessage {
   logger?: LoggerData;
 }
 
+export interface CommandFeatures {
+  imageInput: boolean;
+}
+
 /**
  * Interface representing a slash command in the bot.
  */
@@ -165,6 +176,7 @@ export interface BotCommand {
     | SlashCommandOptionsOnlyBuilder
     | RESTPostAPIChatInputApplicationCommandsJSONBody
     | Omit<SlashCommandBuilder, "addSubcommand" | "addSubcommandGroup">;
+  buildData?(features: CommandFeatures): BotCommand["data"];
   execute(interaction: ChatInputCommandInteraction): Promise<void>;
   autocomplete?(interaction: AutocompleteInteraction): Promise<void>;
 }

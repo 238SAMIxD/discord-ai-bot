@@ -1,5 +1,7 @@
 import { getConfig } from "../config.js";
-import { BotCommand } from "../types.js";
+import { getVisionModels } from "../api/ollama.js";
+import { log, LogLevel } from "../utils/logger.js";
+import { BotCommand, CommandFeatures } from "../types.js";
 import text2img from "./text2img.js";
 import chat from "./chat.js";
 import generate from "./generate.js";
@@ -24,4 +26,36 @@ export function getCommands(): BotCommand[] {
   }
 
   return cachedCommands;
+}
+
+export function getCommandData(features: CommandFeatures) {
+  return getCommands().map((c) => c.buildData?.(features) ?? c.data);
+}
+
+export async function resolveImageInput(): Promise<boolean> {
+  const mode = getConfig().imageInput;
+  if (mode !== "auto") return mode;
+
+  try {
+    const visionModels = await getVisionModels();
+    if (visionModels.length === 0) {
+      log.log(
+        LogLevel.Info,
+        "IMAGE_INPUT=auto: no vision model found on the Ollama servers, so /chat has no image option.",
+      );
+      return false;
+    }
+    log.log(
+      LogLevel.Info,
+      `IMAGE_INPUT=auto: /chat offers the image option. Vision models found: ${visionModels.map((m) => m.model).join(", ")}`,
+    );
+    return true;
+  } catch (error) {
+    log.log(
+      LogLevel.Warn,
+      "IMAGE_INPUT=auto: could not reach the Ollama servers, so /chat is registered without the image option.",
+      error,
+    );
+    return false;
+  }
 }

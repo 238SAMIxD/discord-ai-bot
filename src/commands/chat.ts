@@ -22,6 +22,8 @@ import { statsComponents } from "../utils/stats.js";
 import { getConfig } from "../config.js";
 import {
   BotCommand,
+  CommandFeatures,
+  OllamaChatMessage,
   OllamaChatResponse,
   OllamaChatRequest,
   Server,
@@ -40,29 +42,46 @@ import {
   slowmodeMessage,
   tryStartSlowmode,
 } from "../state/slowmode.js";
+import {
+  downloadImage,
+  imageAttachmentError,
+  imageMarker,
+  visionRejection,
+} from "../utils/images.js";
 
-const data = new SlashCommandBuilder()
-  .setName("chat")
-  .setDescription("Chat with the Ollama bot (persists conversation context)")
-  .addStringOption((option) =>
-    option
-      .setName("prompt")
-      .setDescription("The message to send to the chatbot")
-      .setRequired(true),
-  )
-  .addStringOption((option) =>
-    option
-      .setName("model")
-      .setDescription("Optional specific Ollama model to use")
-      .setRequired(false)
-      .setAutocomplete(true),
-  )
-  .addBooleanOption((option) =>
-    option
-      .setName("stream")
-      .setDescription("Stream the response chunks (Experimental)")
-      .setRequired(false),
-  );
+function buildData({ imageInput }: CommandFeatures) {
+  const data = new SlashCommandBuilder()
+    .setName("chat")
+    .setDescription("Chat with the Ollama bot (persists conversation context)")
+    .addStringOption((option) =>
+      option
+        .setName("prompt")
+        .setDescription("The message to send to the chatbot")
+        .setRequired(true),
+    )
+    .addStringOption((option) =>
+      option
+        .setName("model")
+        .setDescription("Optional specific Ollama model to use")
+        .setRequired(false)
+        .setAutocomplete(true),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName("stream")
+        .setDescription("Stream the response chunks (Experimental)")
+        .setRequired(false),
+    );
+  if (imageInput) {
+    data.addAttachmentOption((option) =>
+      option
+        .setName("image")
+        .setDescription("An image for a vision model to look at")
+        .setRequired(false),
+    );
+  }
+  return data;
+}
 
 function saveExchange(
   channelID: string,
@@ -85,7 +104,8 @@ function saveExchange(
 }
 
 const chat: BotCommand = {
-  data,
+  data: buildData({ imageInput: false }),
+  buildData,
   async autocomplete(interaction: AutocompleteInteraction) {
     const focusedOption = interaction.options.getFocused(true);
     if (focusedOption.name === "model") {
@@ -125,7 +145,27 @@ const chat: BotCommand = {
       const prompt = interaction.options.getString("prompt", true);
       const model = interaction.options.getString("model") ?? getConfig().model;
       const stream = interaction.options.getBoolean("stream") ?? false;
-      const content = `${speakerName(interaction)}: ${prompt}`;
+      const image =
+        getConfig().imageInput === false
+          ? null
+          : interaction.options.getAttachment("image");
+
+      if (image) {
+        const problem =
+          imageAttachmentError(image) ?? (await visionRejection(model, signal));
+        if (problem) {
+          removePendingChat(channelID, userID, pending);
+          stop.complete();
+          cancelSlowmode(userID);
+          await interaction.editReply({ content: problem, components: [] });
+          return;
+        }
+      }
+
+      const content = image
+        ? `${speakerName(interaction)}: ${prompt} ${imageMarker(image)}`
+        : `${speakerName(interaction)}: ${prompt}`;
+      const images = image ? [await downloadImage(image, signal)] : [];
 
       const systemMessage = await buildSystemMessage(
         model,
@@ -133,10 +173,7 @@ const chat: BotCommand = {
         await buildBotContext(interaction),
         stop.queueStatus,
       );
-      const messagesToSend: {
-        role: "user" | "assistant" | "system";
-        content: string;
-      }[] = [];
+      const messagesToSend: OllamaChatMessage[] = [];
 
       if (systemMessage) {
         messagesToSend.push({ role: "system", content: systemMessage });
@@ -144,7 +181,11 @@ const chat: BotCommand = {
 
       const turn = startTurn();
       messagesToSend.push(...getUserHistory(channelID, userID));
-      messagesToSend.push({ role: "user", content });
+      messagesToSend.push(
+        images.length > 0
+          ? { role: "user", content, images }
+          : { role: "user", content },
+      );
 
       const payload: OllamaChatRequest = {
         model,

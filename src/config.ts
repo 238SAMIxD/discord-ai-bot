@@ -23,6 +23,16 @@ export interface Config {
   chatHistoryDb: string;
   showStats: boolean;
   slowmodeDelay: number;
+  imageInput: ImageInputMode;
+  maxImageSizeMb: number;
+}
+
+export type ImageInputMode = "auto" | boolean;
+
+function parseImageInput(value: string | undefined): ImageInputMode {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  if (normalized === "" || normalized === "auto") return "auto";
+  return getBoolean(normalized);
 }
 
 function parseServers(value: string | undefined, envName: string): Server[] {
@@ -104,6 +114,8 @@ export function getConfig(): Config {
       process.env.CHAT_HISTORY_DB?.trim() || "./data/chat-history.db",
     showStats: getBoolean(process.env.SHOW_STATS?.trim() || "true"),
     slowmodeDelay: parsePositiveInt(process.env.SLOWMODE_DELAY, 0),
+    imageInput: parseImageInput(process.env.IMAGE_INPUT),
+    maxImageSizeMb: parsePositiveInt(process.env.MAX_IMAGE_SIZE_MB, 10),
   };
 
   return cachedConfig;

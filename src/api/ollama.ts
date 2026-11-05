@@ -52,15 +52,19 @@ export async function makeRequest<TResponse, TRequest = object>(
   );
 }
 
-const modelSystemMessages = new Map<string, string | null>();
+const modelInfo = new Map<string, OllamaShowResponse>();
 
-async function getModelSystemMessage(
+export function clearModelInfoCache(): void {
+  modelInfo.clear();
+}
+
+async function getModelInfo(
   model: string,
   signal?: AbortSignal,
   onQueue?: QueueListener,
-): Promise<string | null> {
-  const cached = modelSystemMessages.get(model);
-  if (cached !== undefined) return cached;
+): Promise<OllamaShowResponse> {
+  const cached = modelInfo.get(model);
+  if (cached) return cached;
 
   const info = await makeRequest<OllamaShowResponse, OllamaShowRequest>(
     "/api/show",
@@ -70,9 +74,48 @@ async function getModelSystemMessage(
     signal,
     onQueue,
   );
-  const system = info?.system ?? null;
-  modelSystemMessages.set(model, system);
-  return system;
+  const result = info ?? {};
+  modelInfo.set(model, result);
+  return result;
+}
+
+async function getModelSystemMessage(
+  model: string,
+  signal?: AbortSignal,
+  onQueue?: QueueListener,
+): Promise<string | null> {
+  const info = await getModelInfo(model, signal, onQueue);
+  return info.system ?? null;
+}
+
+const VISION_FAMILIES = ["clip", "mllama"];
+
+function hasVision(info: OllamaShowResponse): boolean {
+  if (Array.isArray(info.capabilities)) {
+    return info.capabilities.includes("vision");
+  }
+  const families = info.details?.families;
+  return (
+    Array.isArray(families) &&
+    families.some((family) => VISION_FAMILIES.includes(family))
+  );
+}
+
+export async function supportsVision(
+  model: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  try {
+    return hasVision(await getModelInfo(model, signal));
+  } catch (e) {
+    signal?.throwIfAborted();
+    log.log(
+      LogLevel.Debug,
+      `Could not tell whether ${model} supports vision`,
+      e,
+    );
+    return false;
+  }
 }
 
 export async function buildSystemMessage(
@@ -108,9 +151,15 @@ export async function buildSystemMessage(
   return systemMessages.join("\n\n");
 }
 
-export async function getModels(): Promise<OllamaModelInfo[]> {
+interface ModelsLookup {
+  models: OllamaModelInfo[];
+  reachable: boolean;
+}
+
+async function lookUpModels(): Promise<ModelsLookup> {
   const allModels: OllamaModelInfo[] = [];
   const seenModels = new Set<string>();
+  let reachable = false;
 
   const results = await Promise.allSettled(
     getConfig().servers.map(async (server) => {
@@ -131,6 +180,7 @@ export async function getModels(): Promise<OllamaModelInfo[]> {
   );
 
   for (const result of results) {
+    if (result.status === "fulfilled" && result.value) reachable = true;
     if (result.status === "fulfilled" && result.value?.models) {
       for (const model of result.value.models) {
         if (!seenModels.has(model.model)) {
@@ -141,7 +191,27 @@ export async function getModels(): Promise<OllamaModelInfo[]> {
     }
   }
 
-  return allModels;
+  return { models: allModels, reachable };
+}
+
+export async function getModels(): Promise<OllamaModelInfo[]> {
+  return (await lookUpModels()).models;
+}
+
+export class OllamaUnreachableError extends Error {
+  constructor() {
+    super("No Ollama server answered");
+    this.name = "OllamaUnreachableError";
+  }
+}
+
+export async function getVisionModels(): Promise<OllamaModelInfo[]> {
+  const { models, reachable } = await lookUpModels();
+  if (!reachable) throw new OllamaUnreachableError();
+  const vision = await Promise.all(
+    models.map((model) => supportsVision(model.model)),
+  );
+  return models.filter((_, i) => vision[i]);
 }
 
 function serverUrl(server: Server, path: string): string {

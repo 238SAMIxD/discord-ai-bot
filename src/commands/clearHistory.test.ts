@@ -108,6 +108,7 @@ function fakeInteraction(
     options: {
       getString: (name: string) => (name === "prompt" ? prompt : null),
       getBoolean: (name: string) => (name === "stream" ? stream : null),
+      getAttachment: () => null,
     },
     deferReply: mock.fn(async () => undefined),
     editReply: mock.fn(async (_reply: unknown) => ({})),
