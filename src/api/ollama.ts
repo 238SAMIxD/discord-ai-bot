@@ -59,7 +59,7 @@ interface CachedModelInfo {
 
 const modelInfo = new Map<string, CachedModelInfo>();
 
-const NO_VISION_RECHECK_MS = 5 * 60_000;
+const VISION_RECHECK_MS = 5 * 60_000;
 
 export function clearModelInfoCache(): void {
   modelInfo.clear();
@@ -115,13 +115,8 @@ export async function supportsVision(
   signal?: AbortSignal,
 ): Promise<boolean> {
   try {
-    const cached = modelInfo.get(model);
-    if (cached && hasVision(cached.info)) {
-      signal?.throwIfAborted();
-      return true;
-    }
     return hasVision(
-      await getModelInfo(model, signal, undefined, NO_VISION_RECHECK_MS),
+      await getModelInfo(model, signal, undefined, VISION_RECHECK_MS),
     );
   } catch (e) {
     signal?.throwIfAborted();
