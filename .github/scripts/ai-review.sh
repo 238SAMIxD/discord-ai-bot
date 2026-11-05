@@ -97,12 +97,13 @@ fail() {
 }
 
 # Parses the findings block in file $1 into $work/findings-parsed.json.
-# Several top-level arrays are merged, and plain-string entries become findings
-# with their first line as the title. Returns non-zero when the block is not
-# usable, for example when it holds a value that is not an array.
+# Several top-level arrays are merged, a lone object counts as one finding, and
+# plain-string entries become findings with their first line as the title.
+# Returns non-zero when the block is not usable, for example when it holds a
+# value that is neither an array nor an object.
 normalize_findings() {
   jq -c -s '
-    if length == 0 or any(.[]; type != "array") then error("the findings block is not a JSON array") else add end
+    if length == 0 or any(.[]; type != "array" and type != "object") then error("the findings block is not a JSON array") else map(if type == "object" then [.] else . end) | add end
     | map(
         if type == "object" then .
         elif type == "string" then
@@ -125,8 +126,10 @@ normalize_findings() {
 }
 
 # Prints file $1 with the JSON mistakes free models often make fixed: bare and
-# single-quoted keys or strings, trailing commas, and raw control characters
-# inside strings. Text inside strings is otherwise left exactly as written.
+# single-quoted keys or strings, trailing commas, raw control characters inside
+# strings, closing brackets that do not match the open one, and strings or
+# brackets left open at the end. Text inside strings is otherwise left exactly
+# as written.
 repair_json() {
   awk -v sq="'" '
     { text = text (NR > 1 ? "\n" : "") $0 }
@@ -135,6 +138,7 @@ repair_json() {
       prev = ""
       in_string = 0
       quote = ""
+      stack = ""
       for (i = 1; i <= n; i++) {
         c = substr(text, i, 1)
         if (in_string) {
@@ -154,6 +158,15 @@ repair_json() {
           continue
         }
         if (c == "\"" || c == sq) { printf "\""; in_string = 1; quote = c; continue }
+        if (c == "{" || c == "[") { stack = stack c; printf "%s", c; prev = c; continue }
+        if (c == "}" || c == "]") {
+          if (stack == "") continue
+          closer = (substr(stack, length(stack), 1) == "{") ? "}" : "]"
+          stack = substr(stack, 1, length(stack) - 1)
+          printf "%s", closer
+          prev = closer
+          continue
+        }
         if (c == ",") {
           j = i + 1
           while (j <= n && substr(text, j, 1) ~ /[ \t\r\n]/) j++
@@ -175,9 +188,64 @@ repair_json() {
         printf "%s", c
         if (c !~ /[ \t\r\n]/) prev = c
       }
+      if (in_string) printf "\""
+      for (k = length(stack); k > 0; k--) printf "%s", (substr(stack, k, 1) == "{") ? "}" : "]"
       printf "\n"
     }
   ' "$1"
+}
+
+# Splits the repaired findings block in file $1 into its top-level entries and
+# keeps every entry that parses as an object or a string. Writes the kept
+# entries as a JSON array to $work/findings-salvaged.json and the unreadable
+# ones, one per line, to $work/findings-dropped.txt. Returns non-zero when no
+# entry could be kept.
+salvage_findings() {
+  awk '
+    { text = text (NR > 1 ? "\n" : "") $0 }
+    END {
+      n = length(text)
+      start = 1
+      while (start <= n && substr(text, start, 1) ~ /[ \t\r\n]/) start++
+      depth = (substr(text, start, 1) == "{") ? 1 : 0
+      in_string = 0
+      item = ""
+      for (i = 1; i <= n; i++) {
+        c = substr(text, i, 1)
+        if (in_string) {
+          item = item c
+          if (c == "\\") { i++; item = item substr(text, i, 1) }
+          else if (c == "\"") { in_string = 0; if (depth == 1) { print item; item = "" } }
+          continue
+        }
+        if (c == "\"") { in_string = 1; if (depth >= 1) item = item c; continue }
+        if (c == "{" || c == "[") {
+          if (depth == 1 && item != "") { print item; item = "" }
+          depth++
+          if (depth >= 2) item = item c
+          continue
+        }
+        if (c == "}" || c == "]") {
+          if (depth >= 2) item = item c
+          depth--
+          if (depth <= 1 && item != "") { print item; item = "" }
+          continue
+        }
+        if (depth == 1) {
+          if (c == ",") { if (item != "") { print item; item = "" } }
+          else if (c !~ /[ \t\r\n]/) item = item c
+          continue
+        }
+        if (depth >= 2) item = item ((c ~ /[\t\r\n]/) ? " " : c)
+      }
+      if (item != "") print item
+    }
+  ' "$1" > "$work/findings-items.txt"
+  jq -R -c '. as $raw | ((fromjson? | select(type == "object" or type == "string") | {ok: .}) // {bad: $raw})' \
+    "$work/findings-items.txt" > "$work/findings-items.json" || return 1
+  jq -s -c '[.[] | select(has("ok")) | .ok]' "$work/findings-items.json" > "$work/findings-salvaged.json" || return 1
+  jq -s -r '.[] | select(has("bad")) | .bad' "$work/findings-items.json" > "$work/findings-dropped.txt" || return 1
+  [[ "$(jq 'length' "$work/findings-salvaged.json")" -gt 0 ]]
 }
 
 # Prints file $1 with a line break between top-level `},{` pairs, so a findings
@@ -225,12 +293,17 @@ extract_findings() {
   ' "$work/model.md" > "$work/model-clean.md"
   echo "[]" > "$work/findings.json"
   echo "[]" > "$work/inline-comments.json"
+  : > "$work/findings-dropped.txt"
   if [[ ! -s "$work/findings-raw.txt" ]]; then
     findings_state="none"
   elif normalize_findings "$work/findings-raw.txt" || {
       repair_json "$work/findings-raw.txt" > "$work/findings-repaired.txt" \
         && normalize_findings "$work/findings-repaired.txt" \
         && echo "::notice::The findings block from the model was not strict JSON and was repaired before parsing."
+    } || {
+      salvage_findings "$work/findings-repaired.txt" \
+        && normalize_findings "$work/findings-salvaged.json" \
+        && echo "::notice::The findings block from the model was broken, so its readable findings were kept and $(grep -c '' "$work/findings-dropped.txt") unreadable one(s) are listed separately."
     }; then
     mv "$work/findings-parsed.json" "$work/findings.json"
     findings_state="valid"
@@ -282,6 +355,15 @@ compose_review() {
         ) | join("\n\n"))
         end
     ' "$work/findings.json" > "$work/findings.md"
+    if [[ -s "$work/findings-dropped.txt" ]]; then
+      {
+        printf '\n_%s more finding(s) from the model could not be read._\n\n' \
+          "$(grep -c '' "$work/findings-dropped.txt")"
+        printf '<details>\n<summary>Unreadable findings</summary>\n\n````\n'
+        cat "$work/findings-dropped.txt"
+        printf '````\n\n</details>\n'
+      } >> "$work/findings.md"
+    fi
     awk -v section="$work/findings.md" "$heading_awk"'
       !inserted && heading($0, "notes") {
         if (last != "") print ""
