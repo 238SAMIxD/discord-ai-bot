@@ -30,6 +30,13 @@ import {
 } from "../state/slowmode.js";
 import { getConfig } from "../config.js";
 import {
+  downloadImage,
+  ignoredImagesMessage,
+  imageAttachmentError,
+  isImageAttachment,
+  visionRejection,
+} from "../utils/images.js";
+import {
   BotCommand,
   OllamaGenerateResponse,
   OllamaGenerateRequest,
@@ -99,6 +106,11 @@ const generate: BotCommand = {
     }
     const stop = createStopButton(interaction);
     let stoppedPartway = false;
+    let slowmodeCancelled = false;
+    const releaseSlowmode = () => {
+      slowmodeCancelled = true;
+      cancelSlowmode(interaction.user.id);
+    };
     try {
       await interaction.deferReply();
       await stop.show();
@@ -111,6 +123,27 @@ const generate: BotCommand = {
       for (let i = 1; i <= 5; i++) {
         const att = interaction.options.getAttachment(`attachment${i}`);
         if (att) attachments.push(att);
+      }
+
+      let imageAttachments = attachments.filter(isImageAttachment);
+      if (getConfig().imageInput === false && imageAttachments.length > 0) {
+        await interaction.followUp({
+          content: ignoredImagesMessage(imageAttachments),
+          flags: MessageFlags.Ephemeral,
+        });
+        imageAttachments = [];
+      }
+
+      if (imageAttachments.length > 0) {
+        const problem =
+          imageAttachments.map(imageAttachmentError).find((e) => e !== null) ??
+          (await visionRejection(model, stop.signal));
+        if (problem) {
+          stop.complete();
+          releaseSlowmode();
+          await interaction.editReply({ content: problem, components: [] });
+          return;
+        }
       }
 
       const TEXT_EXTENSIONS = [
@@ -152,10 +185,6 @@ const generate: BotCommand = {
 
       const pdfAttachments = attachments.filter(
         (att) => att.contentType?.includes("pdf") || att.name.endsWith(".pdf"),
-      );
-
-      const imageAttachments = attachments.filter((att) =>
-        att.contentType?.startsWith("image"),
       );
 
       let finalPrompt = prompt;
@@ -205,14 +234,7 @@ const generate: BotCommand = {
       const imagesBase64: string[] = [];
       if (imageAttachments.length > 0) {
         const imageContents = await Promise.all(
-          imageAttachments.map(async (att) => {
-            const res = await downloadAttachment(
-              att.url,
-              "arraybuffer",
-              stop.signal,
-            );
-            return Buffer.from(res.data as ArrayBuffer).toString("base64");
-          }),
+          imageAttachments.map((att) => downloadImage(att, stop.signal)),
         );
         imagesBase64.push(...imageContents);
       }
@@ -292,7 +314,7 @@ const generate: BotCommand = {
       if (stop.signal.aborted) {
         await interaction.editReply({ content: "Stopped." });
       } else if (error instanceof ServersBusyError) {
-        cancelSlowmode(interaction.user.id);
+        releaseSlowmode();
         await interaction.editReply({
           content: BUSY_MESSAGE,
           components: [],
@@ -305,7 +327,7 @@ const generate: BotCommand = {
         });
       }
     } finally {
-      finishSlowmode(interaction.user.id);
+      if (!slowmodeCancelled) finishSlowmode(interaction.user.id);
       await stop.finish(stoppedPartway);
     }
   },

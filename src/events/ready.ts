@@ -1,6 +1,6 @@
 import { Events } from "discord.js";
 import { REST, Routes } from "discord.js";
-import { getCommands } from "../commands/commands.js";
+import { getCommandData, resolveImageInput } from "../commands/commands.js";
 import { log, logError, LogLevel } from "../utils/logger.js";
 import { getConfig } from "../config.js";
 import type { Event } from "./index.js";
@@ -24,9 +24,10 @@ const event: Event<Events.ClientReady> = {
 
     log.log(LogLevel.Info, `Bot is ready! Logged in as ${client.user.tag}`);
 
+    const imageInput = await resolveImageInput();
     try {
       await rest.put(Routes.applicationCommands(client.user.id), {
-        body: getCommands().map((c) => c.data),
+        body: getCommandData({ imageInput }),
       });
       log.log(
         LogLevel.Info,
