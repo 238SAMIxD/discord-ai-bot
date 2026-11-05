@@ -41,7 +41,7 @@ const serverEmitter = new EventEmitter();
 serverEmitter.setMaxListeners(0);
 let wakeCount = 0;
 
-const queues = new WeakMap<Server[], object[]>();
+const queues = new Map<string, object[]>();
 
 const MAX_TIMER_DELAY_MS = 2 ** 31 - 1;
 
@@ -59,11 +59,15 @@ function releaseServer(server: Server) {
   wakeWaiters();
 }
 
-function queueFor(servers: Server[]): object[] {
-  let queue = queues.get(servers);
+function queueKey(servers: Server[]): string {
+  return servers.map((server) => server.url).join(",");
+}
+
+function queueFor(key: string): object[] {
+  let queue = queues.get(key);
   if (!queue) {
     queue = [];
-    queues.set(servers, queue);
+    queues.set(key, queue);
   }
   return queue;
 }
@@ -110,9 +114,7 @@ function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 /**
  * Sends a request to the first free server, trying the next one when a server
  * fails. Requests that find every server busy wait in a first-come,
- * first-served queue shared by everyone using the same server list. The queue
- * belongs to the `servers` array object itself, so callers must pass the same
- * array every time, such as the one from `getConfig()`, not a copy.
+ * first-served queue shared by every request to the same server URLs.
  */
 export async function makeBaseRequest<TResponse, TRequest = object>(
   servers: Server[],
@@ -141,7 +143,8 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
   const failed = new Set<Server>();
   let error: Error | null = null;
 
-  const queue = queueFor(servers);
+  const key = queueKey(servers);
+  let queue = queueFor(key);
   const ticket = {};
   let inQueue = false;
   let reportedAhead: number | undefined;
@@ -149,6 +152,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
   const leaveQueue = () => {
     if (!inQueue) return;
     queue.splice(queue.indexOf(ticket), 1);
+    if (queue.length === 0) queues.delete(key);
     inQueue = false;
     wakeWaiters();
   };
@@ -157,6 +161,7 @@ export async function makeBaseRequest<TResponse, TRequest = object>(
     while (true) {
       signal?.throwIfAborted();
       if (!inQueue) {
+        queue = queueFor(key);
         if (error) queue.unshift(ticket);
         else queue.push(ticket);
         inQueue = true;
