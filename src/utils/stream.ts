@@ -8,7 +8,8 @@ import type { OllamaStats } from "../types.js";
 
 /**
  * Handles an Ollama streaming response, throttling Discord message edits
- * and updating the chat history.
+ * and updating the chat history. `completeStats` can add to the stats of the
+ * last chunk before they are shown, and is skipped once stopped.
  */
 export async function handleStreamResponse<
   T extends OllamaStats & {
@@ -21,6 +22,7 @@ export async function handleStreamResponse<
   responseStream: NodeJS.ReadableStream,
   onComplete: (fullText: string) => void | Promise<void>,
   stopSignal?: AbortSignal,
+  completeStats?: (stats: OllamaStats) => Promise<OllamaStats>,
 ): Promise<boolean> {
   const streamState = {
     fullResponse: "",
@@ -102,6 +104,8 @@ export async function handleStreamResponse<
 
   const cleanText = streamState.fullResponse.trim() || "(No response)";
   if (!stopped) await onComplete(cleanText);
+  let stats = stopped ? undefined : streamState.stats;
+  if (stats && completeStats) stats = await completeStats(stats);
   await streamState.editPromise.catch(() => undefined);
 
   try {
@@ -109,7 +113,7 @@ export async function handleStreamResponse<
       interaction,
       cleanText,
       true,
-      statsComponents(stopped ? undefined : streamState.stats),
+      statsComponents(stats),
     );
   } catch (err) {
     logError(err);

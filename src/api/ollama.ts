@@ -1,9 +1,19 @@
 import axios from "axios";
 import { getConfig } from "../config.js";
-import { makeBaseRequest, type HttpMethod } from "./base.js";
+import {
+  makeBaseRequest,
+  type HttpMethod,
+  type QueueListener,
+} from "./base.js";
 import { log, LogLevel } from "../utils/logger.js";
 
-import type { OllamaShowRequest, OllamaShowResponse } from "../types.js";
+import type {
+  OllamaPsResponse,
+  OllamaShowRequest,
+  OllamaShowResponse,
+  OllamaStats,
+  Server,
+} from "../types.js";
 
 export interface OllamaModelInfo {
   name: string;
@@ -21,17 +31,24 @@ export async function makeRequest<TResponse, TRequest = object>(
   responseType:
     "arraybuffer" | "blob" | "document" | "json" | "text" | "stream" = "json",
   signal?: AbortSignal,
+  onQueue?: QueueListener,
+  onServer?: (server: Server) => void,
 ): Promise<TResponse> {
+  const config = getConfig();
   return makeBaseRequest<TResponse, TRequest>(
-    getConfig().servers,
+    config.servers,
     path,
     method,
     data,
-    responseType,
-    getConfig().requestTimeout,
-    getConfig().serverWaitTimeout,
-    getConfig().streamIdleTimeout,
-    signal,
+    {
+      responseType,
+      timeoutMs: config.requestTimeout,
+      waitTimeoutMs: config.serverWaitTimeout,
+      streamIdleTimeoutMs: config.streamIdleTimeout,
+      signal,
+      onQueue,
+      onServer,
+    },
   );
 }
 
@@ -40,6 +57,7 @@ const modelSystemMessages = new Map<string, string | null>();
 async function getModelSystemMessage(
   model: string,
   signal?: AbortSignal,
+  onQueue?: QueueListener,
 ): Promise<string | null> {
   const cached = modelSystemMessages.get(model);
   if (cached !== undefined) return cached;
@@ -50,6 +68,7 @@ async function getModelSystemMessage(
     { name: model },
     "json",
     signal,
+    onQueue,
   );
   const system = info?.system ?? null;
   modelSystemMessages.set(model, system);
@@ -60,13 +79,18 @@ export async function buildSystemMessage(
   model: string,
   signal?: AbortSignal,
   botContext = "",
+  onQueue?: QueueListener,
 ): Promise<string> {
   const config = getConfig();
   const systemMessages: string[] = [];
 
   if (config.useModelSystemMessage) {
     try {
-      const modelSystemMessage = await getModelSystemMessage(model, signal);
+      const modelSystemMessage = await getModelSystemMessage(
+        model,
+        signal,
+        onQueue,
+      );
       if (modelSystemMessage) systemMessages.push(modelSystemMessage);
     } catch (e) {
       log.log(
@@ -91,13 +115,10 @@ export async function getModels(): Promise<OllamaModelInfo[]> {
   const results = await Promise.allSettled(
     getConfig().servers.map(async (server) => {
       try {
-        const url = new URL(server.url);
-        if (!url.pathname.endsWith("/")) url.pathname += "/";
-        url.pathname += "api/tags";
-
-        const response = await axios.get<OllamaTagsResponse>(url.toString(), {
-          timeout: 5000,
-        });
+        const response = await axios.get<OllamaTagsResponse>(
+          serverUrl(server, "api/tags"),
+          { timeout: 5000 },
+        );
         return response.data;
       } catch {
         log.log(
@@ -121,4 +142,73 @@ export async function getModels(): Promise<OllamaModelInfo[]> {
   }
 
   return allModels;
+}
+
+function serverUrl(server: Server, path: string): string {
+  const url = new URL(server.url);
+  if (!url.pathname.endsWith("/")) url.pathname += "/";
+  url.pathname += path;
+  return url.toString();
+}
+
+function withDefaultTag(model: string): string {
+  return model.includes(":") ? model : `${model}:latest`;
+}
+
+/**
+ * Looks up the context window Ollama loaded for a model on one server, from
+ * `/api/ps`. Skips the request queue, and resolves to undefined whenever the
+ * server cannot tell: an error, no matching model, or an Ollama version that
+ * does not report `context_length`.
+ */
+export async function getLoadedContextLength(
+  server: Server,
+  model: string,
+): Promise<number | undefined> {
+  try {
+    const response = await axios.get<OllamaPsResponse>(
+      serverUrl(server, "api/ps"),
+      { timeout: 5000 },
+    );
+    const wanted = withDefaultTag(model);
+    const loaded = response.data?.models?.find((entry) =>
+      [entry.model, entry.name].some(
+        (name) => typeof name === "string" && withDefaultTag(name) === wanted,
+      ),
+    );
+    const contextLength = loaded?.context_length;
+    if (
+      typeof contextLength === "number" &&
+      Number.isSafeInteger(contextLength) &&
+      contextLength > 0
+    ) {
+      return contextLength;
+    }
+    log.log(
+      LogLevel.Debug,
+      `Ollama server ${server.url} did not report a loaded context for ${model}`,
+    );
+  } catch (e) {
+    log.log(
+      LogLevel.Debug,
+      `Could not fetch loaded models from Ollama server ${server.url}`,
+      e,
+    );
+  }
+  return undefined;
+}
+
+/**
+ * Adds the loaded context window of the server that produced an answer to its
+ * stats, when stats are shown and the server reports it.
+ */
+export async function withLoadedContext<T extends OllamaStats>(
+  stats: T,
+  server: Server | undefined,
+): Promise<T> {
+  if (!server || !stats.model || !getConfig().showStats) return stats;
+  const contextLength = await getLoadedContextLength(server, stats.model);
+  return contextLength === undefined
+    ? stats
+    : { ...stats, context_length: contextLength };
 }

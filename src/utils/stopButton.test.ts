@@ -14,6 +14,7 @@ import {
   getUserHistory,
   openChatHistory,
 } from "../state/conversations.js";
+import { resetSlowmode } from "../state/slowmode.js";
 import { Logger, setLogger } from "./logger.js";
 import { createStopButton, handleStopButton } from "./stopButton.js";
 
@@ -58,6 +59,7 @@ process.env.USE_SYSTEM = "false";
 process.env.USE_BOT_CONTEXT = "false";
 process.env.USE_MODEL_SYSTEM = "false";
 process.env.SHOW_STATS = "true";
+process.env.SLOWMODE_DELAY = "0";
 
 before(() => openChatHistory(":memory:"));
 after(() => closeChatHistory());
@@ -161,6 +163,7 @@ function fakeCommand(
       getAttachment: () => null,
     },
     deferReply: mock.fn(async () => undefined),
+    reply: mock.fn(async (_reply: unknown) => undefined),
     editReply: mock.fn(async (_reply: unknown) => ({})),
     followUp: mock.fn(async (_reply: unknown) => ({})),
   };
@@ -229,6 +232,70 @@ test("createStopButton shows a red Stop button and removes it once finished", as
 
   await stop.finish();
   assert.deepEqual(edits(interaction).at(-1), { components: [] });
+});
+
+test("createStopButton shows the request's place in line while it waits", async () => {
+  const interaction = fakeCommand();
+  const stop = startStop(interaction);
+
+  stop.queueStatus(2);
+  await delay(5);
+  assert.equal(interaction.editReply.mock.callCount(), 0);
+
+  await stop.show();
+  stop.queueStatus(2);
+  await delay(5);
+  assert.equal(
+    lastContent(interaction),
+    "Waiting in line: 2 requests ahead of you…",
+  );
+  stop.queueStatus(1);
+  await delay(5);
+  assert.equal(
+    lastContent(interaction),
+    "Waiting in line: 1 request ahead of you…",
+  );
+  stop.queueStatus(0);
+  await delay(5);
+  assert.equal(
+    lastContent(interaction),
+    "Waiting for the current answer to finish…",
+  );
+  assert.deepEqual(lastButtons(interaction), STOP);
+  stop.queueStatus(null);
+  await delay(5);
+  assert.equal(lastContent(interaction), "Generating…");
+
+  const calls = interaction.editReply.mock.callCount();
+  stop.complete();
+  stop.queueStatus(0);
+  await delay(5);
+  assert.equal(interaction.editReply.mock.callCount(), calls);
+  await stop.finish();
+});
+
+test("createStopButton sends only the latest place in line while an edit is in flight", async () => {
+  const interaction = fakeCommand();
+  const stop = startStop(interaction);
+  await stop.show();
+
+  stop.queueStatus(3);
+  stop.queueStatus(2);
+  stop.queueStatus(1);
+  await delay(5);
+  stop.queueStatus(1);
+  await delay(5);
+
+  assert.deepEqual(
+    edits(interaction)
+      .slice(1)
+      .map((reply) => (reply as { content: string }).content),
+    [
+      "Waiting in line: 3 requests ahead of you…",
+      "Waiting in line: 1 request ahead of you…",
+    ],
+  );
+  await stop.finish();
 });
 
 test("createStopButton leaves a disabled Stopped button on a reply stopped partway", async () => {
@@ -538,5 +605,86 @@ test(
       { role: "user", content: `User ${OWNER}: Question` },
       { role: "assistant", content: "Answer" },
     ]);
+  },
+);
+
+test(
+  "a /chat sent while the server is busy waits in line, then answers",
+  options,
+  async (t) => {
+    const server = await startFakeServer(t);
+    const firstRequest = server.nextRequest();
+    const first = fakeCommand({ prompt: "First" });
+    const firstRunning = run(chat, first);
+    const firstHeld = await firstRequest;
+
+    const second = fakeCommand({ prompt: "Second" }, OTHER);
+    const secondRunning = run(chat, second);
+    await waitUntil(
+      () => lastContent(second) === "Waiting for the current answer to finish…",
+    );
+    assert.deepEqual(lastButtons(second), STOP);
+
+    const secondRequest = server.nextRequest();
+    firstHeld.answer({ message: { role: "assistant", content: "One" } });
+    await firstRunning;
+    const secondHeld = await secondRequest;
+    await waitUntil(() => lastContent(second) === "Generating…");
+
+    secondHeld.answer({ message: { role: "assistant", content: "Two" } });
+    await secondRunning;
+    assert.equal(lastContent(second), "Two");
+  },
+);
+
+test(
+  "slow mode turns down a user's /chat and /generate until the delay after their answer",
+  options,
+  async (t) => {
+    process.env.SLOWMODE_DELAY = "60000";
+    resetSlowmode();
+    t.after(() => {
+      process.env.SLOWMODE_DELAY = "0";
+      resetSlowmode();
+      clearConfigCache();
+    });
+    const server = await startFakeServer(t);
+    const request = server.nextRequest();
+    const first = fakeCommand({ prompt: "Question" });
+    const running = run(chat, first);
+    const held = await request;
+
+    const whileRunning = fakeCommand({ prompt: "Again" });
+    await run(generate, whileRunning);
+    assert.deepEqual(whileRunning.reply.mock.calls[0]?.arguments, [
+      {
+        content: "Slow mode: wait until your current answer finishes.",
+        flags: MessageFlags.Ephemeral,
+      },
+    ]);
+    assert.equal(whileRunning.deferReply.mock.callCount(), 0);
+
+    held.answer({ message: { role: "assistant", content: "Answer" } });
+    await running;
+
+    const afterAnswer = fakeCommand({ prompt: "Again" });
+    await run(chat, afterAnswer);
+    assert.match(
+      String(
+        (afterAnswer.reply.mock.calls[0]?.arguments[0] as { content: string })
+          .content,
+      ),
+      /^Slow mode: you can ask again <t:\d+:R>\.$/,
+    );
+
+    const otherUser = fakeCommand({ prompt: "Hi" }, OTHER);
+    const otherRequest = server.nextRequest();
+    const otherRunning = run(chat, otherUser);
+    (await otherRequest).answer({
+      message: { role: "assistant", content: "Hello" },
+    });
+    await otherRunning;
+    assert.equal(otherUser.reply.mock.callCount(), 0);
+    assert.equal(lastContent(otherUser), "Hello");
   },
 );

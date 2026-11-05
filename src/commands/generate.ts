@@ -2,20 +2,38 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   AutocompleteInteraction,
+  MessageFlags,
 } from "discord.js";
-import { makeRequest, getModels, buildSystemMessage } from "../api/ollama.js";
+import {
+  makeRequest,
+  getModels,
+  buildSystemMessage,
+  withLoadedContext,
+} from "../api/ollama.js";
+import { ServersBusyError } from "../api/base.js";
 import { logError } from "../utils/logger.js";
-import { replySplitInteraction, downloadAttachment } from "../utils/helpers.js";
+import {
+  replySplitInteraction,
+  downloadAttachment,
+  BUSY_MESSAGE,
+} from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
 import { statsComponents } from "../utils/stats.js";
 import { extractTextFromPDF } from "../utils/pdf.js";
 import { createStopButton } from "../utils/stopButton.js";
 import { buildBotContext } from "../utils/botContext.js";
+import {
+  cancelSlowmode,
+  finishSlowmode,
+  slowmodeMessage,
+  tryStartSlowmode,
+} from "../state/slowmode.js";
 import { getConfig } from "../config.js";
 import {
   BotCommand,
   OllamaGenerateResponse,
   OllamaGenerateRequest,
+  Server,
 } from "../types.js";
 
 const data = new SlashCommandBuilder()
@@ -71,6 +89,14 @@ const generate: BotCommand = {
     }
   },
   async execute(interaction: ChatInputCommandInteraction) {
+    const waitLeft = tryStartSlowmode(interaction.user.id);
+    if (waitLeft > 0) {
+      await interaction.reply({
+        content: slowmodeMessage(waitLeft),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     const stop = createStopButton(interaction);
     let stoppedPartway = false;
     try {
@@ -195,6 +221,7 @@ const generate: BotCommand = {
         model,
         stop.signal,
         await buildBotContext(interaction),
+        stop.queueStatus,
       );
 
       const payload: OllamaGenerateRequest = {
@@ -210,11 +237,24 @@ const generate: BotCommand = {
         payload.images = imagesBase64;
       }
 
+      let usedServer: Server | undefined;
+      const onServer = (server: Server) => {
+        usedServer = server;
+      };
+
       if (!stream) {
         const response = await makeRequest<
           OllamaGenerateResponse,
           OllamaGenerateRequest
-        >("/api/generate", "post", payload, "json", stop.signal);
+        >(
+          "/api/generate",
+          "post",
+          payload,
+          "json",
+          stop.signal,
+          stop.queueStatus,
+          onServer,
+        );
         stop.complete();
         const responseText = response?.response || "(No response from Ollama)";
 
@@ -222,24 +262,41 @@ const generate: BotCommand = {
           interaction,
           responseText,
           true,
-          statsComponents(response),
+          statsComponents(
+            response && (await withLoadedContext(response, usedServer)),
+          ),
         );
       } else {
         const responseStream = await makeRequest<
           NodeJS.ReadableStream,
           OllamaGenerateRequest
-        >("/api/generate", "post", payload, "stream", stop.signal);
+        >(
+          "/api/generate",
+          "post",
+          payload,
+          "stream",
+          stop.signal,
+          stop.queueStatus,
+          onServer,
+        );
 
         stoppedPartway = await handleStreamResponse<OllamaGenerateResponse>(
           interaction,
           responseStream,
           () => stop.complete(),
           stop.signal,
+          (stats) => withLoadedContext(stats, usedServer),
         );
       }
     } catch (error) {
       if (stop.signal.aborted) {
         await interaction.editReply({ content: "Stopped." });
+      } else if (error instanceof ServersBusyError) {
+        cancelSlowmode(interaction.user.id);
+        await interaction.editReply({
+          content: BUSY_MESSAGE,
+          components: [],
+        });
       } else {
         logError(error);
         await interaction.editReply({
@@ -248,6 +305,7 @@ const generate: BotCommand = {
         });
       }
     } finally {
+      finishSlowmode(interaction.user.id);
       await stop.finish(stoppedPartway);
     }
   },

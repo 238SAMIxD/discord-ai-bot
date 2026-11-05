@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import axios from "axios";
 import { getConfig } from "../config.js";
-import { makeBaseRequest, type HttpMethod } from "./base.js";
+import {
+  makeBaseRequest,
+  type HttpMethod,
+  type QueueListener,
+} from "./base.js";
 import { log, LogLevel } from "../utils/logger.js";
 
 import type { Server } from "../types.js";
@@ -44,6 +48,7 @@ export async function makeStableDiffusionRequest<
   method: HttpMethod,
   data: TRequest,
   signal?: AbortSignal,
+  onQueue?: QueueListener,
 ): Promise<TResponse> {
   const taskId = randomUUID();
   return makeBaseRequest<TResponse, TRequest & { force_task_id: string }>(
@@ -51,12 +56,13 @@ export async function makeStableDiffusionRequest<
     path,
     method,
     { ...data, force_task_id: taskId },
-    undefined,
-    getConfig().requestTimeout,
-    getConfig().serverWaitTimeout,
-    0,
-    signal,
-    (server) => interruptTask(server, taskId),
+    {
+      timeoutMs: getConfig().requestTimeout,
+      waitTimeoutMs: getConfig().serverWaitTimeout,
+      signal,
+      interrupt: (server) => interruptTask(server, taskId),
+      onQueue,
+    },
   );
 }
 

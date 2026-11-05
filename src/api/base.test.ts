@@ -4,7 +4,7 @@ import { EventEmitter, once } from "node:events";
 import { createServer, type ServerResponse } from "node:http";
 import { text } from "node:stream/consumers";
 import { setTimeout as delay } from "node:timers/promises";
-import { makeBaseRequest } from "./base.js";
+import { makeBaseRequest, ServersBusyError } from "./base.js";
 import { Logger, setLogger } from "../utils/logger.js";
 
 import type { AddressInfo } from "node:net";
@@ -106,11 +106,12 @@ function openStream(
     "/api/chat",
     "post",
     { stream: true },
-    "stream",
-    0,
-    0,
-    idleTimeoutMs,
-    signal,
+    {
+      responseType: "stream",
+      waitTimeoutMs: 0,
+      streamIdleTimeoutMs: idleTimeoutMs,
+      signal,
+    },
   );
 }
 
@@ -120,11 +121,7 @@ function chat(servers: Server[], waitTimeoutMs = 1_000, signal?: AbortSignal) {
     "/api/chat",
     "post",
     { stream: false },
-    "json",
-    0,
-    waitTimeoutMs,
-    0,
-    signal,
+    { responseType: "json", waitTimeoutMs, signal },
   );
 }
 
@@ -320,7 +317,7 @@ test("makeBaseRequest waits for a busy server instead of failing when the others
   const replies = [chat(servers), chat(servers)];
 
   assert.equal(await isPending(Promise.any(replies), 200), true);
-  assert.equal(a.requestCount(), 3);
+  assert.equal(a.requestCount(), 2);
 
   b.finishStreams();
   await consumed;
@@ -346,7 +343,7 @@ test("makeBaseRequest gives up once the wait timeout passes", async (t) => {
   const consumed = consume(stream);
   const startedAt = Date.now();
 
-  await assert.rejects(chat(servers, 100), /All servers busy/);
+  await assert.rejects(chat(servers, 100), ServersBusyError);
   const elapsed = Date.now() - startedAt;
   assert.ok(elapsed >= 100);
   assert.ok(elapsed < 500);
@@ -428,12 +425,7 @@ function txt2img(
     "/sdapi/v1/txt2img",
     "post",
     {},
-    "json",
-    0,
-    waitTimeoutMs,
-    0,
-    signal,
-    interrupt,
+    { responseType: "json", waitTimeoutMs, signal, interrupt },
   );
 }
 
@@ -493,12 +485,12 @@ test("makeBaseRequest doesn't interrupt a request that fails without being abort
       "/api/chat",
       "post",
       { stream: false },
-      "json",
-      0,
-      0,
-      0,
-      new AbortController().signal,
-      interrupt,
+      {
+        responseType: "json",
+        waitTimeoutMs: 0,
+        signal: new AbortController().signal,
+        interrupt,
+      },
     ),
     { name: "AxiosError", status: 500 },
   );
@@ -555,3 +547,134 @@ test(
     assert.equal((await reply).message.content, "A");
   },
 );
+
+function queued(
+  servers: Server[],
+  name: string,
+  events: string[],
+  signal?: AbortSignal,
+) {
+  return makeBaseRequest<object>(
+    servers,
+    "/api/chat",
+    "post",
+    {},
+    {
+      responseType: "json",
+      waitTimeoutMs: 0,
+      signal,
+      onQueue: (ahead) => events.push(`${name}:${ahead}`),
+    },
+  );
+}
+
+test(
+  "makeBaseRequest serves waiting requests in the order they arrived and reports their place in line",
+  { timeout: 5_000 },
+  async (t) => {
+    const held = await startHeldServer(t);
+    const servers: Server[] = [{ url: held.url, available: true }];
+    const events: string[] = [];
+
+    const firstReceived = held.nextRequest();
+    const first = queued(servers, "A", events);
+    await firstReceived;
+    const second = queued(servers, "B", events);
+    const third = queued(servers, "C", events);
+    await delay(50);
+    assert.deepEqual(events, ["B:0", "C:1"]);
+
+    const secondReceived = held.nextRequest();
+    held.answer();
+    await first;
+    await secondReceived;
+    await delay(50);
+    assert.deepEqual(events, ["B:0", "C:1", "B:null", "C:0"]);
+
+    const thirdReceived = held.nextRequest();
+    held.answer();
+    await second;
+    await thirdReceived;
+    assert.deepEqual(events.at(-1), "C:null");
+
+    held.answer();
+    assert.deepEqual(await third, {});
+  },
+);
+
+test(
+  "makeBaseRequest moves the queue up when a waiting request aborts",
+  { timeout: 5_000 },
+  async (t) => {
+    const held = await startHeldServer(t);
+    const servers: Server[] = [{ url: held.url, available: true }];
+    const events: string[] = [];
+    const controller = new AbortController();
+
+    const firstReceived = held.nextRequest();
+    const first = queued(servers, "A", events);
+    await firstReceived;
+    const second = queued(servers, "B", events, controller.signal);
+    const third = queued(servers, "C", events);
+    await delay(50);
+
+    controller.abort();
+    await assert.rejects(second, { name: "AbortError" });
+    await delay(50);
+    assert.deepEqual(events, ["B:0", "C:1", "C:0"]);
+
+    const thirdReceived = held.nextRequest();
+    held.answer();
+    await first;
+    await thirdReceived;
+    held.answer();
+    assert.deepEqual(await third, {});
+    assert.deepEqual(events.at(-1), "C:null");
+  },
+);
+
+test("makeBaseRequest reports the server that answered", async (t) => {
+  const a = await startFakeOllama(t, "A");
+  const servers = toServers(a);
+  const used: Server[] = [];
+
+  await makeBaseRequest<ChatChunk>(
+    servers,
+    "/api/chat",
+    "post",
+    { stream: false },
+    { responseType: "json", onServer: (server) => used.push(server) },
+  );
+
+  assert.deepEqual(used, [servers[0]]);
+});
+
+test("makeBaseRequest reports the server it failed over to", async (t) => {
+  const a = await startFakeOllama(t, "A", 500);
+  const b = await startFakeOllama(t, "B");
+  const servers = toServers(a, b);
+  const used: Server[] = [];
+  const onServer = (server: Server) => used.push(server);
+
+  const reply = await makeBaseRequest<ChatChunk>(
+    servers,
+    "/api/chat",
+    "post",
+    { stream: false },
+    { responseType: "json", onServer },
+  );
+  assert.equal(reply.message.content, "B");
+
+  const stream = await makeBaseRequest<Readable>(
+    servers,
+    "/api/chat",
+    "post",
+    { stream: true },
+    { responseType: "stream", waitTimeoutMs: 0, onServer },
+  );
+  const consumed = consume(stream);
+  b.finishStreams();
+  await consumed;
+
+  assert.deepEqual(used, [servers[1], servers[1]]);
+});

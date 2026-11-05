@@ -173,3 +173,116 @@ test("replyWithStats explains when a button carries no stats", async () => {
     },
   ]);
 });
+
+test("statsComponents shows how much of the loaded context the answer fills", () => {
+  setShowStats("true");
+  const [, contextRow] = buttons({ ...stats, context_length: 4096 });
+  assert.deepEqual(
+    contextRow?.map((button) => [
+      button.emoji?.name,
+      button.label,
+      button.style,
+    ]),
+    [
+      ["📥", "1,024 prompt tokens", ButtonStyle.Secondary],
+      ["🧠", "1,280 / 4,096 ctx", ButtonStyle.Secondary],
+      ["💾", "13 ms load", ButtonStyle.Secondary],
+      ["⌛", "6.3 s total", ButtonStyle.Secondary],
+    ],
+  );
+});
+
+test("statsComponents warns once the context is at least 90% full", () => {
+  setShowStats("true");
+  const contextStyle = (prompt: number) =>
+    buttons({ prompt_eval_count: prompt, eval_count: 0, context_length: 1000 })
+      .flat()
+      .find((button) => button.custom_id.startsWith("stats:context:"))?.style;
+  assert.equal(contextStyle(899), ButtonStyle.Secondary);
+  assert.equal(contextStyle(900), ButtonStyle.Danger);
+  assert.equal(contextStyle(1500), ButtonStyle.Danger);
+});
+
+test("statsComponents hides the context button without all of its stats", () => {
+  setShowStats("true");
+  const hasContext = (value: OllamaStats) =>
+    buttons(value)
+      .flat()
+      .some((button) => button.custom_id.startsWith("stats:context:"));
+  assert.equal(hasContext(stats), false);
+  assert.equal(hasContext({ ...stats, context_length: 0 }), false);
+  assert.equal(
+    hasContext({ ...stats, eval_count: undefined, context_length: 4096 }),
+    false,
+  );
+  assert.equal(
+    hasContext({
+      ...stats,
+      prompt_eval_count: undefined,
+      context_length: 4096,
+    }),
+    false,
+  );
+  assert.equal(hasContext({ ...stats, context_length: 4096 }), true);
+});
+
+test("replyWithStats shows the context use from any button of the answer", async () => {
+  setShowStats("true");
+  const all = buttons({ ...stats, context_length: 4096 }).flat();
+  for (const button of all) {
+    const { embed } = await breakdown(button.custom_id);
+    assert.deepEqual(embed?.fields?.[2], {
+      name: "Context",
+      value: "1,280 / 4,096 tokens (31%)",
+    });
+  }
+});
+
+test("replyWithStats caps the context share at 100%", async () => {
+  setShowStats("true");
+  const [button] = buttons({
+    prompt_eval_count: 5000,
+    eval_count: 200,
+    context_length: 4096,
+  }).flat();
+  const { embed } = await breakdown(button?.custom_id ?? "");
+  assert.deepEqual(
+    embed?.fields?.find((field) => field.name === "Context"),
+    { name: "Context", value: "5,200 / 4,096 tokens (100%)" },
+  );
+});
+
+test("replyWithStats still reads buttons made before the context stat", async () => {
+  const { embed } = await breakdown(
+    "stats:tokens:sg:5urg5c:74:2sjvi0w:7qmv4:2w6uv40",
+  );
+  assert.deepEqual(embed?.fields, [
+    { name: "Prompt", value: "1,024 tokens · 354 ms · 2,892.7 tokens/s" },
+    { name: "Response", value: "256 tokens · 6.1 s · 42.1 tokens/s" },
+    { name: "Load time", value: "13 ms" },
+    { name: "Total time", value: "6.3 s" },
+  ]);
+});
+
+test("statsComponents keeps every button ID within Discord's limit at the largest values", () => {
+  setShowStats("true");
+  const huge = Number.MAX_SAFE_INTEGER;
+  const half = Math.floor(huge / 2);
+  const all = buttons({
+    model: "m".repeat(200),
+    prompt_eval_count: half,
+    prompt_eval_duration: huge,
+    eval_count: half,
+    eval_duration: huge,
+    load_duration: huge,
+    total_duration: huge,
+    context_length: huge,
+  }).flat();
+  assert.equal(all.length, 7);
+  assert.ok(
+    all.some((button) => button.custom_id.startsWith("stats:context:")),
+  );
+  assert.equal(new Set(all.map((button) => button.custom_id)).size, 7);
+  assert.ok(all.every((button) => button.custom_id.length <= 100));
+  assert.ok(all.every((button) => (button.label?.length ?? 0) <= 80));
+});

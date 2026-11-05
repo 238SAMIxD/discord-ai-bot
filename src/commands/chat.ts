@@ -2,14 +2,30 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   AutocompleteInteraction,
+  MessageFlags,
 } from "discord.js";
-import { makeRequest, getModels, buildSystemMessage } from "../api/ollama.js";
+import {
+  makeRequest,
+  getModels,
+  buildSystemMessage,
+  withLoadedContext,
+} from "../api/ollama.js";
+import { ServersBusyError } from "../api/base.js";
 import { log, logError, LogLevel } from "../utils/logger.js";
-import { replySplitInteraction, speakerName } from "../utils/helpers.js";
+import {
+  replySplitInteraction,
+  speakerName,
+  BUSY_MESSAGE,
+} from "../utils/helpers.js";
 import { handleStreamResponse } from "../utils/stream.js";
 import { statsComponents } from "../utils/stats.js";
 import { getConfig } from "../config.js";
-import { BotCommand, OllamaChatResponse, OllamaChatRequest } from "../types.js";
+import {
+  BotCommand,
+  OllamaChatResponse,
+  OllamaChatRequest,
+  Server,
+} from "../types.js";
 import {
   getUserHistory,
   addToUserHistory,
@@ -18,6 +34,12 @@ import {
 import { addPendingChat, removePendingChat } from "../state/pendingChats.js";
 import { createStopButton } from "../utils/stopButton.js";
 import { buildBotContext } from "../utils/botContext.js";
+import {
+  cancelSlowmode,
+  finishSlowmode,
+  slowmodeMessage,
+  tryStartSlowmode,
+} from "../state/slowmode.js";
 
 const data = new SlashCommandBuilder()
   .setName("chat")
@@ -83,6 +105,14 @@ const chat: BotCommand = {
     }
   },
   async execute(interaction: ChatInputCommandInteraction) {
+    const waitLeft = tryStartSlowmode(interaction.user.id);
+    if (waitLeft > 0) {
+      await interaction.reply({
+        content: slowmodeMessage(waitLeft),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     const channelID = interaction.channelId ?? "";
     const userID = interaction.user.id;
     const pending = addPendingChat(channelID, userID);
@@ -101,6 +131,7 @@ const chat: BotCommand = {
         model,
         signal,
         await buildBotContext(interaction),
+        stop.queueStatus,
       );
       const messagesToSend: {
         role: "user" | "assistant" | "system";
@@ -121,6 +152,11 @@ const chat: BotCommand = {
         stream,
       };
 
+      let usedServer: Server | undefined;
+      const onServer = (server: Server) => {
+        usedServer = server;
+      };
+
       const saveReply = (reply: string) => {
         removePendingChat(channelID, userID, pending);
         stop.complete();
@@ -131,7 +167,15 @@ const chat: BotCommand = {
         const response = await makeRequest<
           OllamaChatResponse,
           OllamaChatRequest
-        >("/api/chat", "post", payload, "json", signal);
+        >(
+          "/api/chat",
+          "post",
+          payload,
+          "json",
+          signal,
+          stop.queueStatus,
+          onServer,
+        );
         const responseText =
           response?.message?.content || "(No response from Ollama)";
 
@@ -141,19 +185,30 @@ const chat: BotCommand = {
           interaction,
           responseText,
           true,
-          statsComponents(response),
+          statsComponents(
+            response && (await withLoadedContext(response, usedServer)),
+          ),
         );
       } else {
         const responseStream = await makeRequest<
           NodeJS.ReadableStream,
           OllamaChatRequest
-        >("/api/chat", "post", payload, "stream", signal);
+        >(
+          "/api/chat",
+          "post",
+          payload,
+          "stream",
+          signal,
+          stop.queueStatus,
+          onServer,
+        );
 
         stoppedPartway = await handleStreamResponse<OllamaChatResponse>(
           interaction,
           responseStream,
           saveReply,
           stop.signal,
+          (stats) => withLoadedContext(stats, usedServer),
         );
       }
     } catch (error) {
@@ -162,6 +217,12 @@ const chat: BotCommand = {
       } else if (pending.signal.aborted) {
         await interaction.editReply({
           content: "Cancelled because your conversation history was cleared.",
+        });
+      } else if (error instanceof ServersBusyError) {
+        cancelSlowmode(userID);
+        await interaction.editReply({
+          content: BUSY_MESSAGE,
+          components: [],
         });
       } else {
         logError(error);
@@ -172,6 +233,7 @@ const chat: BotCommand = {
       }
     } finally {
       removePendingChat(channelID, userID, pending);
+      finishSlowmode(userID);
       await stop.finish(stoppedPartway);
     }
   },
