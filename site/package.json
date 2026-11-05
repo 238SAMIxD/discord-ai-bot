@@ -1,0 +1,39 @@
+{
+  "name": "discord-ai-bot-site",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Landing page for Discord AI Bot",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build && vite build --ssr src/entry-server.tsx --outDir dist-ssr && node scripts/prerender.mjs",
+    "preview": "vite preview",
+    "test:prettier": "prettier --check .",
+    "test:lint": "oxlint",
+    "test:tsc": "tsc -b",
+    "prettier": "prettier --write .",
+    "lint": "oxlint --fix"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.4",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "oxlint": "^1.90.0",
+    "prettier": "^3.9.10",
+    "tailwindcss": "^4.3.4",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.5"
+  },
+  "packageManager": "pnpm@12.16.1",
+  "engines": {
+    "node": ">=22.13"
+  }
+}
