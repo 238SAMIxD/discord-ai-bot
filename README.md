@@ -73,12 +73,4 @@ pnpm install --frozen-lockfile
 pnpm test:prettier && pnpm test:lint && pnpm test:tsc && pnpm test && pnpm build
 ```
 
-The landing page lives in `site/`, a separate pnpm project with its own lockfile, so it isn't installed with the bot. Pull requests and pushes to `main` that change `site/` also run the `site` check, which formats, lints, type-checks and builds it. To run the same checks locally:
-
-```bash
-cd site
-pnpm install --frozen-lockfile
-pnpm test:prettier && pnpm test:lint && pnpm test:tsc && pnpm build
-```
-
 The repository admin can comment `/review` on a pull request to get an AI code review from an [OpenRouter](https://openrouter.ai) model. It uses the free `nvidia/nemotron-3-ultra-550b-a55b:free` model unless the `OPENROUTER_MODEL` repository variable names another one, and requests to paid models are billed to the OpenRouter account that owns the `OPENROUTER_API_KEY` secret. Any text after the command is passed to the reviewer as extra instructions, for example `/review focus on attachment handling`. The review is posted as one comment, which later runs update in place. Findings that point at a line shown in the diff are posted as inline comments on that line, and the review comment lists them by title with a link, while the other findings are explained in the review comment itself. A later run replaces the inline comments unless someone has replied.

@@ -9,5 +9,4 @@ data/
 .vscode
 .agents
 .fallow
-site/
 *.md
