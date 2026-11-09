@@ -170,8 +170,8 @@ importers:
         specifier: ^1.21.0
         version: 1.21.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       discord.js:
-        specifier: ^14.28.0
-        version: 14.28.0
+        specifier: ^14.28.1
+        version: 14.28.1
       dotenv:
         specifier: ^18.0.9
         version: 18.0.9
@@ -198,8 +198,8 @@ importers:
         specifier: ^5.5.7
         version: 5.5.7(@types/eslint@9.6.1)(eslint-config-prettier@10.1.8(eslint@9.39.4(supports-color@7.2.0)))(eslint@9.39.4(supports-color@7.2.0))(prettier@3.9.10)
       globals:
-        specifier: ^17.13.0
-        version: 17.13.0
+        specifier: ^17.14.0
+        version: 17.14.0
       prettier:
         specifier: ^3.9.10
         version: 3.9.10
@@ -719,8 +719,8 @@ packages:
   discord-api-types@0.38.57:
     resolution: {integrity: sha512-R1CTSSt4RshqCq23j2Xq2ZscvzB4LzG9OB1CYQdKUGdw8Ti/oF/72EEtK2mNpagG/Vj9NcBT7dw9lKLf+Dacfg==}
 
-  discord.js@14.28.0:
-    resolution: {integrity: sha512-l/mIllvqvWQDWqa8NPw7b2AU2tM9oPWiWR6Jk54DTNlUdyArXbi+Y0m0sLIUtQ9O0x+tyVpDMCG6K6Kf0yeAWQ==}
+  discord.js@14.28.1:
+    resolution: {integrity: sha512-Je5OcqgurnIUQK4vR+gQnmzOf/lNQsD6d/UkV8ZOj+bFa5zJXPyiGXlbywp2EagwshVT18y7YNQNSRd3FjYkDw==}
     engines: {node: '>=18'}
 
   dotenv@18.0.9:
@@ -897,8 +897,8 @@ packages:
     resolution: {integrity: sha512-oahGvuMGQlPw/ivIYBjVSrWAfWLBeku5tpPE2fOPLi+WHffIWbuh2tCjhyQhTBPMf5E9jDEH4FOmTYgYwbKwtQ==}
     engines: {node: '>=18'}
 
-  globals@17.13.0:
-    resolution: {integrity: sha512-RwMTC61u7hrG3ZJMkZQOK4JLJrKS8QtoTii63EmWvFXHqycY9FObBJQCbsLxSO8kjKhWE5kV1GC+Vb1g3RI0Zg==}
+  globals@17.14.0:
+    resolution: {integrity: sha512-UtdkTVyAJePQv0J2M9Xe4L0ruNSDV314XiIJsADI2Zf40bcdAonE/D/OhAU8AT99oij9mhLByb+NvA3QWZYgCg==}
     engines: {node: '>=18'}
 
   gopd@1.2.0:
@@ -1625,7 +1625,7 @@ snapshots:
 
   discord-api-types@0.38.57: {}
 
-  discord.js@14.28.0:
+  discord.js@14.28.1:
     dependencies:
       '@discordjs/builders': 1.15.0
       '@discordjs/collection': 1.5.3
@@ -1849,7 +1849,7 @@ snapshots:
 
   globals@14.0.0: {}
 
-  globals@17.13.0: {}
+  globals@17.14.0: {}
 
   gopd@1.2.0: {}
 
